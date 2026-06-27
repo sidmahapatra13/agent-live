@@ -12,6 +12,9 @@ type ParsedLine struct {
 	Payload   string
 }
 
+// skipLine is a sentinel returned when a line is deliberately ignored.
+var skipLine = &ParsedLine{EventType: "__skip__"}
+
 // JSON event structures from OpenCode's --format json output
 type openCodeJSONEvent struct {
 	Type      string          `json:"type"`
@@ -86,6 +89,9 @@ func (p *openCodeParser) Feed(chunk string) []ParsedLine {
 func (p *openCodeParser) parseLine(line string) *ParsedLine {
 	// First, try JSON — OpenCode outputs JSON events with --format json
 	if pl := p.parseJSON(line); pl != nil {
+		if pl.EventType == "__skip__" {
+			return nil
+		}
 		return pl
 	}
 
@@ -119,8 +125,8 @@ func (p *openCodeParser) parseJSON(line string) *ParsedLine {
 	case "error":
 		return &ParsedLine{EventType: "error", Payload: line}
 	case "step_start", "step_finish":
-		// lifecycle events, skip for now
-		return nil
+		// lifecycle events, skip
+		return skipLine
 	default:
 		return nil
 	}
