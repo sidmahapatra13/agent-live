@@ -308,6 +308,11 @@ export default function GraphCanvas({ nodes, edges, agentPosition }: Props) {
       return
     }
     hasParticleTarget.current = true
+    // Start particle from the agent node's position (canvas center)
+    const src = nodesRef.current.find(n => n.id === agentPosition.source)
+    if (src) {
+      particlePos.current = { x: src.x as number, y: src.y as number }
+    }
     const tgt = nodesRef.current.find(n => n.id === agentPosition.target)
     if (tgt) particleTarget.current = { x: tgt.x as number, y: tgt.y as number }
   }, [agentPosition])
