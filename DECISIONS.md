@@ -56,3 +56,15 @@
 - **Decision:** Use full path in Makefile (`GO := /opt/homebrew/bin/go`) rather than requiring PATH modification.
 - **Why:** The Hermes terminal shell doesn't have Homebrew in PATH by default.
 - **Trade-off:** Means Makefile is macOS-specific. Will generalize when targeting other platforms.
+
+### Parser: dual-mode JSON + regex
+- **Decision:** Parser first tries JSON parse on each line (for OpenCode's `--format json` output), then falls back to regex patterns.
+- **Alternatives:** JSON-only, regex-only, separate parser instances
+- **Why:** JSON gives structured events with exact file paths; regex works with any agent. Both can coexist on the same output stream.
+- **Trade-off:** Slightly more CPU per line (attempting JSON parse), negligible in practice.
+
+### Dashboard design: live status, hover polish, grid background
+- **Decision:** StatusBar uses its own live timer (500ms interval) triggered by `status === 'running'`. Graph edges have `hover: brighter + thicker` CSS transitions. Nodes have tooltips showing full label. Subtle dot grid background.
+- **Alternatives:** Rely on server-sent elapsed timestamps; no hover effects; solid background
+- **Why:** Live timers feel responsive. Hover effects add polish with zero complexity (pure CSS). Grid gives depth without clutter.
+- **Trade-off:** Timer reset logic needs `startRef` management — works but slightly more code.

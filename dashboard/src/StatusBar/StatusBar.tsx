@@ -1,3 +1,5 @@
+import { useEffect, useState, useRef } from 'react'
+
 type Props = {
   connected: boolean
   filesRead: number
@@ -7,6 +9,12 @@ type Props = {
   status: string
 }
 
+function formatTime(seconds: number): string {
+  const m = Math.floor(seconds / 60)
+  const s = Math.floor(seconds % 60)
+  return `${m}:${s.toString().padStart(2, '0')}`
+}
+
 export default function StatusBar({
   connected,
   filesRead,
@@ -14,6 +22,28 @@ export default function StatusBar({
   commands,
   status,
 }: Props) {
+  const [displayTime, setDisplayTime] = useState('0:00')
+  const startRef = useRef<number | null>(null)
+  const isRunning = status === 'running' || status === 'reading' || status === 'writing'
+
+  useEffect(() => {
+    if (isRunning && startRef.current === null) {
+      startRef.current = Date.now()
+    }
+    if (status === 'done') {
+      startRef.current = null
+    }
+
+    const interval = setInterval(() => {
+      if (startRef.current !== null) {
+        const elapsed = Math.floor((Date.now() - startRef.current) / 1000)
+        setDisplayTime(formatTime(elapsed))
+      }
+    }, 500)
+
+    return () => clearInterval(interval)
+  }, [isRunning, status])
+
   return (
     <div
       style={{
@@ -26,34 +56,70 @@ export default function StatusBar({
         fontSize: 12,
         fontFamily: "'SF Mono', 'Fira Code', monospace",
         color: '#94a3b8',
+        userSelect: 'none',
       }}
     >
+      {/* Connection indicator */}
       <span
         style={{
-          display: 'inline-block',
-          width: 8,
-          height: 8,
-          borderRadius: '50%',
-          background: connected ? '#22c55e' : '#ef4444',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 6,
         }}
-      />
-      <span>{connected ? 'Connected' : 'Disconnected'}</span>
-      <span style={{ color: '#475569' }}>|</span>
-      <span>
-        Status: <strong style={{ color: '#e2e8f0' }}>{status}</strong>
+      >
+        <span
+          style={{
+            display: 'inline-block',
+            width: 8,
+            height: 8,
+            borderRadius: '50%',
+            background: connected ? '#22c55e' : '#ef4444',
+            boxShadow: connected
+              ? '0 0 6px rgba(34, 197, 94, 0.5)'
+              : '0 0 6px rgba(239, 68, 68, 0.3)',
+          }}
+        />
+        <span style={{ color: connected ? '#22c55e' : '#ef4444', fontWeight: 600 }}>
+          {connected ? 'LIVE' : 'OFF'}
+        </span>
       </span>
-      <span style={{ color: '#475569' }}>|</span>
+
+      <span style={{ color: '#334155' }}>|</span>
+
+      {/* Status */}
       <span>
-        Read:{' '}
-        <strong style={{ color: '#3b82f6' }}>{filesRead}</strong>
+        Status:{' '}
+        <span style={{ color: status === 'done' ? '#22c55e' : '#e2e8f0', fontWeight: 600 }}>
+          {status}
+        </span>
       </span>
-      <span>
-        Written:{' '}
-        <strong style={{ color: '#22c55e' }}>{filesWritten}</strong>
+
+      <span style={{ color: '#334155' }}>|</span>
+
+      {/* File counters */}
+      <span style={{ display: 'flex', gap: 10 }}>
+        <span>
+          📖{' '}
+          <span style={{ color: '#3b82f6', fontWeight: 600 }}>{filesRead}</span>
+        </span>
+        <span>
+          ✏️{' '}
+          <span style={{ color: '#22c55e', fontWeight: 600 }}>{filesWritten}</span>
+        </span>
+        <span>
+          ⚡{' '}
+          <span style={{ color: '#eab308', fontWeight: 600 }}>{commands}</span>
+        </span>
       </span>
+
+      <span style={{ color: '#334155' }}>|</span>
+
+      {/* Elapsed time */}
       <span>
-        Cmds:{' '}
-        <strong style={{ color: '#eab308' }}>{commands}</strong>
+        ⏱{' '}
+        <span style={{ color: '#a78bfa', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
+          {displayTime}
+        </span>
       </span>
     </div>
   )

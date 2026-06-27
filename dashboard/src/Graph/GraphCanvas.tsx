@@ -79,8 +79,39 @@ export default function GraphCanvas({ nodes, edges, agentPosition }: Props) {
     // Root group
     const root = svg.append('g').attr('class', 'root')
 
-    // Defs for filters
+    // Defs for filters and patterns
     const defs = svg.append('defs')
+
+    // Subtle dot grid background pattern
+    const pattern = defs
+      .append('pattern')
+      .attr('id', 'grid')
+      .attr('width', 40)
+      .attr('height', 40)
+      .attr('patternUnits', 'userSpaceOnUse')
+    pattern
+      .append('circle')
+      .attr('cx', 20)
+      .attr('cy', 20)
+      .attr('r', 1)
+      .attr('fill', '#1e293b')
+
+    svg
+      .append('rect')
+      .attr('width', '100%')
+      .attr('height', '100%')
+      .attr('fill', 'url(#grid)')
+
+    // Hover styles
+    defs
+      .append('style')
+      .text(`
+        .edge-line { transition: stroke-opacity 0.2s, stroke-width 0.2s; }
+        .edge-line:hover { stroke-opacity: 0.9 !important; stroke-width: 3 !important; }
+        .node-circle { transition: r 0.3s; cursor: pointer; }
+        .node-circle:hover { r: 12 !important; }
+        .node-label { pointer-events: none; }
+      `)
 
     // Glow filter for nodes
     const filter = defs
@@ -145,6 +176,7 @@ export default function GraphCanvas({ nodes, edges, agentPosition }: Props) {
 
       edgeSel
         .join('line')
+        .attr('class', 'edge-line')
         .attr('stroke', (d: SimLink) => EDGE_COLORS[d.kind] || '#374151')
         .attr('stroke-width', 1.5)
         .attr('stroke-opacity', 0.4)
@@ -163,6 +195,7 @@ export default function GraphCanvas({ nodes, edges, agentPosition }: Props) {
           (enter) =>
             enter
               .append('circle')
+              .attr('class', 'node-circle')
               .attr('r', 0)
               .attr('fill', (d: SimNode) => NODE_COLORS[d.event_type] || '#6b7280')
               .attr('filter', 'url(#glow)')
@@ -182,6 +215,7 @@ export default function GraphCanvas({ nodes, edges, agentPosition }: Props) {
         )
         .attr('cx', (d: SimNode): number => d.x ?? 0)
         .attr('cy', (d: SimNode): number => d.y ?? 0)
+        .attr('title', (d: SimNode) => d.label)
 
       // Labels
       const labelSel = labelGroup
