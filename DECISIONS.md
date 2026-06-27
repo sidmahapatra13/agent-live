@@ -32,3 +32,27 @@
 ### Dependency discipline
 - **Decision:** No global installs ever. No `npm install -g`, no `sudo`, no `brew install`. Python packages go in a `.venv` inside the project. Node packages resolve to `node_modules/` inside the project. Lockfiles required.
 - **Why:** Reproducible builds, no system pollution, safe for multi-project environments.
+
+## 2026-06-27 — Phase 1 implementation
+
+### PTY wrapper approach
+- **Decision:** Use `creack/pty` to spawn agent in a PTY, read output in a goroutine, parser emits events to WebSocket hub. Server shuts down when agent process exits.
+- **Alternatives:** Log file tailing, MCP server hook, `os/exec` with pipes (no PTY)
+- **Why PTY:** Agents expect a terminal — some write ANSI, check IsTerminal, or behave differently without one. PTY gives us the most faithful capture.
+- **Trade-off:** Slightly more complex than `os/exec` pipes, but `creack/pty` is well-maintained.
+
+### Parser design: chunk-based with regex
+- **Decision:** Accept raw chunks from PTY, buffer partial lines, regex-match fully-formed lines to event types. Unmatched substantive lines → "thought" events.
+- **Alternatives:** Native JSON events from `opencode run --format json`, finite-state machine per agent type
+- **Why regex first:** Works across all agents without format-specific code. The JSON format is OpenCode-only and requires us to proxy both the HTTP stream and the agent's stdout.
+- **Trade-off:** Regex is brittle to output format changes. We can add JSON events mode as an optimization later.
+
+### Frontend serving: filesystem for dev, `embed` for later
+- **Decision:** MVP serves `dashboard/dist/` from the filesystem. Will switch to Go's `embed` when ready for single-binary distribution.
+- **Why:** Faster iteration during development. The `embed` change is a few lines once the dashboard is stable.
+- **Trade-off:** Requires `dashboard/dist/` to exist at runtime, which means running `vite build` before `agent-live`.
+
+### Go path: Homebrew install at `/opt/homebrew/bin/go`
+- **Decision:** Use full path in Makefile (`GO := /opt/homebrew/bin/go`) rather than requiring PATH modification.
+- **Why:** The Hermes terminal shell doesn't have Homebrew in PATH by default.
+- **Trade-off:** Means Makefile is macOS-specific. Will generalize when targeting other platforms.

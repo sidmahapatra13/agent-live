@@ -10,8 +10,8 @@ import (
 
 // Hub maintains a set of active WebSocket connections and broadcasts events.
 type Hub struct {
-	mu      sync.RWMutex
-	clients map[*websocket.Conn]bool
+	mu       sync.RWMutex
+	clients  map[*websocket.Conn]bool
 	upgrader websocket.Upgrader
 }
 
@@ -41,7 +41,6 @@ func (h *Hub) HandleWS(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("WS client connected (%d total)", len(h.clients))
 
-	// Keep connection alive — read until disconnect
 	defer func() {
 		h.mu.Lock()
 		delete(h.clients, conn)

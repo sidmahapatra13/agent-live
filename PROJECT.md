@@ -64,37 +64,31 @@ agent-live run -- <agent-command>
 ## What's Done
 
 - [x] Three architectural decisions locked (Go, D3-force, OpenCode-first)
-- [x] Project scaffolded
+- [x] Project scaffolded: 19 files, Go module, React+Vite dashboard
+- [x] Go CLI: PTY wrapper (`main.go`), event types (`events.go`), OpenCode parser (`parser.go`), WebSocket hub (`hub.go`)
+- [x] Dashboard: StatusBar, Timeline, GraphCanvas stubs, WebSocket hook
+- [x] Dashboard build verified: `tsc --noEmit` clean, `vite build` produces dist/
+- [x] Go binary: builds, vets clean, starts HTTP server on :8080 serving dashboard
+- [x] Smoke test: `agent-live run -- echo "test"` → Dashboard at http://localhost:8080
 
 ## What's Not (MVP Roadmap)
 
-Phase 1 — Go CLI skeleton
-- [ ] `main.go` — PTY wrapper, event loop, WebSocket server
-- [ ] `parser/opencode.go` — regex-based output parser for OpenCode
-- [ ] `events.go` — event type definitions
-- [ ] `server/hub.go` — WebSocket hub (connect/broadcast/disconnect)
+Phase 2 — Graph engine & dashboard polish
+- [ ] D3-force simulation with nodes, edges, agent particle animation
+- [ ] Live node/edge generation from parsed events
+- [ ] Dashboard polishing (layout, colors, transitions)
 
-Phase 2 — Dashboard MVP
-- [ ] Vite + React + TypeScript scaffold
-- [ ] WebSocket hook (`useWebSocket.ts`)
-- [ ] StatusBar component
-- [ ] Timeline component
-- [ ] Graph component (D3-force, nodes, edges, agent particle)
-
-Phase 3 — Integration
-- [ ] `embed` frontend assets into Go binary
-- [ ] Auto-open browser on `agent-live run`
-- [ ] OpenCode adapter tuned from real output
+Phase 3 — OpenCode integration & tuning
+- [ ] Tune parser regex patterns against real OpenCode JSON output
+- [ ] End-to-end test with `agent-live run -- opencode "command"`
+- [ ] Handle OpenCode JSON events mode (`--format json`)
 - [ ] README with demo GIF
-
-Phase 4 — Additional agents
-- [ ] Claude Code adapter
-- [ ] Codex adapter
 
 ## Open Questions
 
 - Force simulation parameters for the graph (repulsion, link distance, charge strength) — will tune after seeing real agent data.
 - Should the dashboard auto-refresh from a recorded session replay, or only live? (MVP: live only.)
+- OpenCode JSON events format (`opencode run --format json`) outputs structured events — should the parser prefer this over regex? Its structured data would be more reliable.
 
 ## Agent-live project conventions
 
