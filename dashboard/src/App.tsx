@@ -146,6 +146,7 @@ export default function App() {
     ws.onmessage = (msg) => {
       try {
         const event = JSON.parse(msg.data) as Event
+        console.log('[App] Event:', event.type, event.payload.slice(0, 60))
         setEvents((prev) => [...prev.slice(-500), event])
         processEvent.current(event)
       } catch {

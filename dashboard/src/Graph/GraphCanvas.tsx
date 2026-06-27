@@ -68,6 +68,10 @@ export default function GraphCanvas({ nodes, edges, agentPosition }: Props) {
   const agentPos = useRef({ x: 100, y: 100 })
   const agentTarget = useRef({ x: 100, y: 100 })
 
+  // Log initial mount
+  console.log('[GraphCanvas] Mounted')
+  console.log('[GraphCanvas] Initial nodes:', nodes.length, 'edges:', edges.length)
+
   // ── Initialize SVG DOM and force simulation ──────────
   useEffect(() => {
     const svgEl = svgRef.current
@@ -160,6 +164,9 @@ export default function GraphCanvas({ nodes, edges, agentPosition }: Props) {
       .force('center', d3Force.forceCenter(widthRef.current / 2, heightRef.current / 2))
       .force('collision', d3Force.forceCollide().radius(25))
       .alphaDecay(0.02)
+
+    // TEST: Render a fixed circle to verify SVG pipeline is working
+    svg.append('circle').attr('cx', 400).attr('cy', 300).attr('r', 10).attr('fill', '#f00')
 
     simRef.current = sim
 

@@ -35,6 +35,7 @@ type openCodePart struct {
 
 type toolInput struct {
 	FilePath string `json:"filePath"`
+	Path     string `json:"path"`
 	Content  string `json:"content,omitempty"`
 	Command  string `json:"command,omitempty"`
 }
@@ -148,13 +149,21 @@ func (p *openCodeParser) parseJSONToolUse(part json.RawMessage) *ParsedLine {
 	}
 
 	switch pctx.Tool {
-	case "read":
-		if input.FilePath != "" {
-			return &ParsedLine{EventType: "file_read", Payload: input.FilePath}
+	case "read", "search", "grep":
+		fp := input.FilePath
+		if fp == "" {
+			fp = input.Path
+		}
+		if fp != "" {
+			return &ParsedLine{EventType: "file_read", Payload: fp}
 		}
 	case "edit", "write", "create":
-		if input.FilePath != "" {
-			return &ParsedLine{EventType: "file_write", Payload: input.FilePath}
+		fp := input.FilePath
+		if fp == "" {
+			fp = input.Path
+		}
+		if fp != "" {
+			return &ParsedLine{EventType: "file_write", Payload: fp}
 		}
 	case "command", "run", "execute", "bash":
 		cmd := input.Command
@@ -162,8 +171,6 @@ func (p *openCodeParser) parseJSONToolUse(part json.RawMessage) *ParsedLine {
 			cmd = pctx.Tool
 		}
 		return &ParsedLine{EventType: "command", Payload: cmd}
-	case "search", "grep":
-		return &ParsedLine{EventType: "file_read", Payload: input.FilePath}
 	case "plan":
 		return &ParsedLine{EventType: "plan_step", Payload: input.FilePath}
 	}
