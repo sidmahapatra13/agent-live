@@ -79,8 +79,21 @@ agent-live run -- <agent-command>
 - [x] **CLI flags** — `--port`, `--help`, `--version`
 - [x] **WebSocket reconnection** — exponential backoff (1s–30s) with jitter
 - [x] **Go module at project root** — no more `cli/` subdirectory module
+- [x] **Dashboard UI redesign** (2026-06-27):
+  - Larger graph nodes (r=22 files, r=24 commands, r=20 thoughts, r=28 agent)
+  - Vibrant saturated colour palette per event type
+  - Always-visible node labels on semi-transparent pill backgrounds
+  - Arrow markers on edges showing direction
+  - Node entrance scale-in animation on creation
+  - Agent pulsing halo animation (CSS keyframes)
+  - Inner highlight dot on all nodes for depth
+  - Improved force simulation parameters (charge -500, collision 50, distance 180)
+  - Compact status bar with rd/wr/cmd shorthand counters
+  - Redesigned timeline panel: 300px, word-wrap for long payloads, sticky header, compact spacing
+  - Global CSS: Inter font, CSS custom properties, custom scrollbar, deeper dark theme
+- [x] **Full CI pipeline**: `make check` (go vet), `make build` (vite + go), `make ci` (tsc + vet + vite + go)
 
-### Fixes applied (2026-06-27)
+### Fixes applied
 
 - [x] **d3-transition import**: Added `import 'd3-transition'` in GraphCanvas.tsx
 - [x] **`__agent__` pseudo-node**: Agent node in simulation's node list
@@ -101,18 +114,18 @@ agent-live run -- <agent-command>
 
 ## What's Not (MVP Roadmap)
 
-- [ ] Dashboard polish: edge highlighting, smoother transitions, responsive layout
 - [ ] README with demo GIF and setup instructions
 - [ ] Publish to GitHub
 - [ ] Claude Code and Codex adapters
 - [ ] Session recording and replay
 - [ ] Tighten `CheckOrigin` for production
+- [ ] Collapsible timeline panel for smaller screens
 
 ## Known Issues
 
 - Agent particle starts at (100, 100) before first event positions it — minor cosmetic
 - Edge list capped at 1000 entries — graph shows last 800 edges
-- Node labels truncated at 22 chars — full path visible in timeline
+- Node labels truncated at 28 chars — full path visible in timeline
 
 ## Open Questions
 

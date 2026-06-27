@@ -10,128 +10,79 @@ type Props = {
   status: string
 }
 
-function formatTime(seconds: number): string {
-  if (seconds < 1) return '<1s'
-  const m = Math.floor(seconds / 60)
-  const s = Math.floor(seconds % 60)
-  return `${m}:${s.toString().padStart(2, '0')}`
+function fmt(s: number): string {
+  if (s < 1) return '<1s'
+  const m = Math.floor(s / 60)
+  const sec = Math.floor(s % 60)
+  return `${m}:${String(sec).padStart(2, '0')}`
 }
 
-export default function StatusBar({
-  connected,
-  reconnecting,
-  filesRead,
-  filesWritten,
-  commands,
-  elapsed,
-  status,
-}: Props) {
-  const [displayTime, setDisplayTime] = useState('0:00')
-  const startRef = useRef<number | null>(null)
-  const isRunning = status === 'running' || status === 'reading' || status === 'writing'
+const STATUS_COLORS: Record<string, string> = {
+  done: '#22c55e',
+  idle: '#64748b',
+  running: '#fbbf24',
+  reading: '#60a5fa',
+  writing: '#34d399',
+}
+
+const COUNT_COLORS = { reads: '#60a5fa', writes: '#34d399', cmds: '#fbbf24' }
+
+export default function StatusBar({ connected, reconnecting, filesRead, filesWritten, commands, elapsed, status }: Props) {
+  const [t, setT] = useState('0:00')
+  const start = useRef<number | null>(null)
+  const run = status === 'running' || status === 'reading' || status === 'writing'
 
   useEffect(() => {
-    if (isRunning && startRef.current === null) {
-      startRef.current = Date.now()
-    }
-    if (status === 'done') {
-      // Show final elapsed from server timestamps when done
-      setDisplayTime(formatTime(elapsed))
-      startRef.current = null
-    }
-
-    const interval = setInterval(() => {
-      if (startRef.current !== null) {
-        const elapsed = Math.floor((Date.now() - startRef.current) / 1000)
-        setDisplayTime(formatTime(elapsed))
-      }
-    }, 500)
-
-    return () => clearInterval(interval)
-  }, [isRunning, status, elapsed])
+    if (run && start.current === null) start.current = Date.now()
+    if (status === 'done') { setT(fmt(elapsed)); start.current = null }
+    const iv = setInterval(() => { if (start.current !== null) setT(fmt(Math.floor((Date.now() - start.current!) / 1000))) }, 500)
+    return () => clearInterval(iv)
+  }, [run, status, elapsed])
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 16,
-        padding: '8px 16px',
-        background: '#0f172a',
-        borderBottom: '1px solid #1e293b',
-        fontSize: 12,
-        fontFamily: "'SF Mono', 'Fira Code', monospace",
-        color: '#94a3b8',
-        userSelect: 'none',
-      }}
-    >
-      {/* Connection indicator */}
-      <span
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 6,
-        }}
-      >
-        <span
-          style={{
-            display: 'inline-block',
-            width: 8,
-            height: 8,
-            borderRadius: '50%',
-            background: connected ? '#22c55e' : '#ef4444',
-            boxShadow: connected
-              ? '0 0 6px rgba(34, 197, 94, 0.5)'
-              : '0 0 6px rgba(239, 68, 68, 0.3)',
-          }}
-        />
-        <span style={{ color: connected ? '#22c55e' : '#ef4444', fontWeight: 600 }}>
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 12,
+      padding: '6px 14px', background: '#0d1220',
+      borderBottom: '1px solid #1e293b',
+      fontSize: 11.5, fontFamily: "'Inter', system-ui, sans-serif",
+      color: '#64748b', userSelect: 'none', flexShrink: 0,
+    }}>
+      {/* Connection */}
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+        <span style={{
+          width: 7, height: 7, borderRadius: '50%',
+          background: connected ? '#22c55e' : '#ef4444',
+          boxShadow: `0 0 7px ${connected ? 'rgba(34,197,94,0.5)' : 'rgba(239,68,68,0.3)'}`,
+        }} />
+        <span style={{ fontWeight: 650, fontSize: 10.5, letterSpacing: '0.04em', color: connected ? '#22c55e' : '#ef4444' }}>
           {connected ? 'LIVE' : 'OFF'}
         </span>
       </span>
 
-      {reconnecting && (
-        <span style={{ color: '#f59e0b', fontStyle: 'italic' }}>
-          Reconnecting…
-        </span>
-      )}
+      {reconnecting && <span style={{ color: '#f59e0b', fontStyle: 'italic', fontSize: 10.5 }}>Reconnecting…</span>}
 
-      <span style={{ color: '#334155' }}>|</span>
+      <span style={{ color: '#1e293b', fontWeight: 100 }}>|</span>
 
       {/* Status */}
       <span>
-        Status:{' '}
-        <span style={{ color: status === 'done' ? '#22c55e' : '#e2e8f0', fontWeight: 600 }}>
-          {status}
-        </span>
+        <span style={{ color: STATUS_COLORS[status] || '#e2e8f0', fontWeight: 600 }}>{status}</span>
       </span>
 
-      <span style={{ color: '#334155' }}>|</span>
+      <span style={{ color: '#1e293b', fontWeight: 100 }}>|</span>
 
-      {/* File counters */}
+      {/* Counters */}
       <span style={{ display: 'flex', gap: 10 }}>
-        <span>
-          📖{' '}
-          <span style={{ color: '#3b82f6', fontWeight: 600 }}>{filesRead}</span>
-        </span>
-        <span>
-          ✏️{' '}
-          <span style={{ color: '#22c55e', fontWeight: 600 }}>{filesWritten}</span>
-        </span>
-        <span>
-          ⚡{' '}
-          <span style={{ color: '#eab308', fontWeight: 600 }}>{commands}</span>
-        </span>
+        <span><span style={{ color: COUNT_COLORS.reads, fontWeight: 600 }}>{filesRead}</span><span style={{ color: '#475569', marginLeft: 2 }}>rd</span></span>
+        <span><span style={{ color: COUNT_COLORS.writes, fontWeight: 600 }}>{filesWritten}</span><span style={{ color: '#475569', marginLeft: 2 }}>wr</span></span>
+        <span><span style={{ color: COUNT_COLORS.cmds, fontWeight: 600 }}>{commands}</span><span style={{ color: '#475569', marginLeft: 2 }}>cmd</span></span>
       </span>
 
-      <span style={{ color: '#334155' }}>|</span>
+      <span style={{ flex: 1 }} />
 
-      {/* Elapsed time */}
-      <span>
-        ⏱{' '}
-        <span style={{ color: '#a78bfa', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
-          {displayTime}
-        </span>
+      {/* Elapsed */}
+      <span style={{ fontVariantNumeric: 'tabular-nums' }}>
+        <span style={{ color: '#475569', fontWeight: 450 }}>⏱</span>{' '}
+        <span style={{ color: '#c084fc', fontWeight: 600 }}>{t}</span>
       </span>
     </div>
   )

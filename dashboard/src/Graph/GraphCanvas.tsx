@@ -1,9 +1,9 @@
 import { useEffect, useRef, useCallback } from 'react'
 import * as d3Force from 'd3-force'
 import { select } from 'd3-selection'
-import 'd3-transition' // registers .transition() on d3-selection
+import 'd3-transition'
 
-// ── Types ────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────
 
 export type NodeDef = {
   id: string
@@ -18,38 +18,47 @@ export type EdgeDef = {
   kind: 'read' | 'write' | 'exec'
 }
 
-// Extended node type used internally by the simulation
 type SimNode = d3Force.SimulationNodeDatum & NodeDef
+type SimLink = d3Force.SimulationLinkDatum<SimNode> & { kind: string }
 
-type SimLink = d3Force.SimulationLinkDatum<SimNode> & {
-  kind: string
+// ── Palette ────────────────────────────────────────────────────
+
+const C: Record<string, string> = {
+  file_read:  '#60a5fa',
+  file_write: '#34d399',
+  command:    '#fbbf24',
+  thought:    '#c084fc',
+  plan_step:  '#22d3ee',
+  __agent__:  '#60a5fa',
+  bg:         '#070b14',
+  grid:       '#131a2e',
 }
 
-// ── Constants ─────────────────────────────────────────────
-
-const NODE_COLORS: Record<string, string> = {
-  file_read: '#3b82f6',
-  file_write: '#22c55e',
-  command: '#eab308',
-  thought: '#a855f7',
-  plan_step: '#06b6d4',
-}
-
-const EDGE_COLORS: Record<string, string> = {
-  read: '#3b82f6',
+const EDGE: Record<string, string> = {
+  read:  '#3b82f6',
   write: '#22c55e',
-  exec: '#eab308',
+  exec:  '#f59e0b',
 }
 
-const NODE_RADIUS: Record<string, number> = {
-  file: 6,
-  command: 8,
-  thought: 5,
+const ICONS: Record<string, string> = {
+  file_read:  '📖',
+  file_write: '✏️',
+  command:    '⚡',
+  thought:    '💭',
+  plan_step:  '🎯',
 }
 
-const AGENT_COLOR = '#60a5fa'
+const NODE_R = { file: 22, command: 24, thought: 20 }
+const AGENT_R = 28
 
-// ── Component ─────────────────────────────────────────────
+// ── Edge key ──────────────────────────────────────────────────
+function edgeKey(d: SimLink): string {
+  const s = typeof d.source === 'string' ? d.source : (d.source as SimNode).id
+  const t = typeof d.target === 'string' ? d.target : (d.target as SimNode).id
+  return `${s}→${t}`
+}
+
+// ── Component ──────────────────────────────────────────────────
 
 type Props = {
   nodes: NodeDef[]
@@ -64,320 +73,262 @@ export default function GraphCanvas({ nodes, edges, agentPosition }: Props) {
   const linksRef = useRef<SimLink[]>([])
   const widthRef = useRef(800)
   const heightRef = useRef(600)
+  const particlePos = useRef({ x: 200, y: 200 })
+  const particleTarget = useRef({ x: 200, y: 200 })
 
-  // Agent particle animation state
-  const agentPos = useRef({ x: 100, y: 100 })
-  const agentTarget = useRef({ x: 100, y: 100 })
-
-  // ── Initialize SVG DOM and force simulation ──────────
+  // ── Init ──
   useEffect(() => {
     const svgEl = svgRef.current
     if (!svgEl) return
 
     const svg = select(svgEl)
     svg.selectAll('*').remove()
-
-    // Root group
     const root = svg.append('g').attr('class', 'root')
-
-    // Defs for filters and patterns
     const defs = svg.append('defs')
 
-    // Subtle dot grid background pattern
-    const pattern = defs
-      .append('pattern')
-      .attr('id', 'grid')
-      .attr('width', 40)
-      .attr('height', 40)
-      .attr('patternUnits', 'userSpaceOnUse')
-    pattern
-      .append('circle')
-      .attr('cx', 20)
-      .attr('cy', 20)
-      .attr('r', 1)
-      .attr('fill', '#1e293b')
+    // Grid
+    const pat = defs.append('pattern').attr('id', 'g')
+      .attr('width', 28).attr('height', 28).attr('patternUnits', 'userSpaceOnUse')
+    pat.append('circle').attr('cx', 14).attr('cy', 14).attr('r', 0.7).attr('fill', C.grid)
+    svg.append('rect').attr('width', '100%').attr('height', '100%').attr('fill', 'url(#g)')
 
-    svg
-      .append('rect')
-      .attr('width', '100%')
-      .attr('height', '100%')
-      .attr('fill', 'url(#grid)')
+    // Edge arrow markers
+    for (const [k, color] of Object.entries(EDGE)) {
+      defs.append('marker')
+        .attr('id', `a-${k}`).attr('viewBox', '0 0 10 10')
+        .attr('refX', 24).attr('refY', 5)
+        .attr('markerWidth', 5).attr('markerHeight', 5).attr('orient', 'auto')
+        .append('path').attr('d', 'M 0 0 L 10 5 L 0 10 z').attr('fill', color)
+    }
 
-    // Hover styles
-    defs
-      .append('style')
-      .text(`
-        .edge-line { transition: stroke-opacity 0.2s, stroke-width 0.2s; }
-        .edge-line:hover { stroke-opacity: 0.9 !important; stroke-width: 3 !important; }
-        .node-circle { transition: r 0.3s; cursor: pointer; }
-        .node-circle:hover { r: 12 !important; }
-        .node-label { pointer-events: none; }
-      `)
+    // Glow filter (standard)
+    const glow = defs.append('filter')
+      .attr('id', 'gl').attr('x', '-60%').attr('y', '-60%')
+      .attr('width', '220%').attr('height', '220%')
+    glow.append('feGaussianBlur').attr('stdDeviation', '3').attr('result', 'b')
+    glow.append('feMerge').selectAll('feMergeNode')
+      .data(['b', 'SourceGraphic']).join('feMergeNode').attr('in', d => d)
 
-    // Glow filter for nodes
-    const filter = defs
-      .append('filter')
-      .attr('id', 'glow')
-      .attr('x', '-50%')
-      .attr('y', '-50%')
-      .attr('width', '200%')
-      .attr('height', '200%')
-    filter.append('feGaussianBlur').attr('stdDeviation', '3').attr('result', 'blur')
-    const merge = filter.append('feMerge')
-    merge.append('feMergeNode').attr('in', 'blur')
-    merge.append('feMergeNode').attr('in', 'SourceGraphic')
+    // Strong glow (agent)
+    const aglow = defs.append('filter')
+      .attr('id', 'agl').attr('x', '-120%').attr('y', '-120%')
+      .attr('width', '340%').attr('height', '340%')
+    aglow.append('feGaussianBlur').attr('stdDeviation', '8').attr('result', 'b')
+    aglow.append('feMerge').selectAll('feMergeNode')
+      .data(['b', 'SourceGraphic']).join('feMergeNode').attr('in', d => d)
 
-    // Stronger glow for agent
-    const agentFilter = defs
-      .append('filter')
-      .attr('id', 'agent-glow')
-      .attr('x', '-100%')
-      .attr('y', '-100%')
-      .attr('width', '300%')
-      .attr('height', '300%')
-    agentFilter.append('feGaussianBlur').attr('stdDeviation', '5').attr('result', 'blur')
-    const agentMerge = agentFilter.append('feMerge')
-    agentMerge.append('feMergeNode').attr('in', 'blur')
-    agentMerge.append('feMergeNode').attr('in', 'SourceGraphic')
+    // CSS
+    defs.append('style').text(`
+      @keyframes pulse-halo {
+        0%,100% { opacity:0.4; r:34; }
+        50%      { opacity:0.15; r:40; }
+      }
+      .edge-line { transition: stroke-opacity .12s, stroke-width .12s; }
+      .node-group { cursor:pointer; }
+      .node-group .node-label-row { opacity:0.6; transition: opacity .15s; }
+      .node-group:hover .node-label-row { opacity:1; }
+      .node-group:hover .node-badge { filter:brightness(1.15); }
+    `)
 
-    // Static element groups (order matters for z-index)
-    const edgeGroup = root.append('g').attr('class', 'edges')
-    const nodeGroup = root.append('g').attr('class', 'nodes')
-    const labelGroup = root.append('g').attr('class', 'labels')
-    const agentGroup = root.append('g').attr('class', 'agent')
+    // Z-groups
+    const edgesG = root.append('g')
+    const nodesG = root.append('g')
+    const agentG = root.append('g')
 
-    // ── Simulation ─────────────────────────────────────
-    const sim = d3Force
-      .forceSimulation<SimNode>(nodesRef.current)
-      .force(
-        'link',
-        d3Force
-          .forceLink<SimNode, SimLink>(linksRef.current)
-          .id((d) => d.id)
-          .distance(120)
-          .strength(0.3),
-      )
-      .force('charge', d3Force.forceManyBody().strength(-200))
+    // Simulation
+    const sim = d3Force.forceSimulation<SimNode>(nodesRef.current)
+      .force('link', d3Force.forceLink<SimNode, SimLink>(linksRef.current)
+        .id(d => d.id).distance(180).strength(0.15))
+      .force('charge', d3Force.forceManyBody().strength(-500))
       .force('center', d3Force.forceCenter(widthRef.current / 2, heightRef.current / 2))
-      .force('collision', d3Force.forceCollide().radius(25))
-      .alphaDecay(0.02)
+      .force('collision', d3Force.forceCollide().radius(50))
+      .alphaDecay(0.014)
 
     simRef.current = sim
 
-    // ── Tick: update DOM positions ─────────────────────
+    function nr(d: SimNode): number { return d.id === '__agent__' ? AGENT_R : NODE_R[d.kind] || 22 }
+    function nc(d: SimNode): string { return d.id === '__agent__' ? C.__agent__ : C[d.event_type] || '#6b7280' }
+
+    // ── Tick ──
     sim.on('tick', () => {
       // Edges
-      const edgeSel = edgeGroup
-        .selectAll<SVGLineElement, SimLink>('line')
-        .data(linksRef.current, (d: SimLink) => {
-          const sId = typeof d.source === 'string' ? d.source : (d.source as SimNode).id
-          const tId = typeof d.target === 'string' ? d.target : (d.target as SimNode).id
-          return `${sId}-${tId}`
-        })
-
-      edgeSel
+      edgesG.selectAll<SVGLineElement, SimLink>('line')
+        .data(linksRef.current, edgeKey)
         .join('line')
         .attr('class', 'edge-line')
-        .attr('stroke', (d: SimLink) => EDGE_COLORS[d.kind] || '#374151')
-        .attr('stroke-width', 1.5)
-        .attr('stroke-opacity', 0.4)
-        .attr('x1', (d: SimLink): number => {
-          const s = d.source
-          return typeof s === 'string' ? 0 : (s as SimNode).x ?? 0
-        })
-        .attr('y1', (d: SimLink): number => {
-          const s = d.source
-          return typeof s === 'string' ? 0 : (s as SimNode).y ?? 0
-        })
-        .attr('x2', (d: SimLink): number => {
-          const t = d.target
-          return typeof t === 'string' ? 0 : (t as SimNode).x ?? 0
-        })
-        .attr('y2', (d: SimLink): number => {
-          const t = d.target
-          return typeof t === 'string' ? 0 : (t as SimNode).y ?? 0
-        })
+        .attr('stroke', d => EDGE[d.kind] || '#374151')
+        .attr('stroke-width', 1.8)
+        .attr('stroke-opacity', 0.3)
+        .attr('marker-end', d => `url(#a-${d.kind})`)
+        .attr('x1', d => (typeof d.source === 'string' ? 0 : (d.source as SimNode).x ?? 0))
+        .attr('y1', d => (typeof d.source === 'string' ? 0 : (d.source as SimNode).y ?? 0))
+        .attr('x2', d => (typeof d.target === 'string' ? 0 : (d.target as SimNode).x ?? 0))
+        .attr('y2', d => (typeof d.target === 'string' ? 0 : (d.target as SimNode).y ?? 0))
 
       // Nodes
-      const nodeSel = nodeGroup
-        .selectAll<SVGCircleElement, SimNode>('circle')
+      nodesG.selectAll<SVGGElement, SimNode>('g.n')
         .data(nodesRef.current, (d: SimNode) => d.id)
-
-      nodeSel
         .join(
-          (enter) =>
-            enter
-              .append('circle')
-              .attr('class', 'node-circle')
-              .attr('r', 0)
-              .attr('fill', (d: SimNode) => NODE_COLORS[d.event_type] || '#6b7280')
-              .attr('filter', 'url(#glow)')
-              .call((sel) =>
-                sel
-                  .transition()
-                  .duration(400)
-                  .attr('r', (d: SimNode) => NODE_RADIUS[d.kind] || 5),
-              ),
-          (update) =>
-            update.call((sel) =>
-              sel
-                .transition()
-                .duration(300)
-                .attr('fill', (d: SimNode) => NODE_COLORS[d.event_type] || '#6b7280'),
-            ),
+          enter => {
+            const g = enter.append('g').attr('class', 'n')
+
+            // Outer ring
+            g.append('circle').attr('class', 'h')
+            // Main circle
+            g.append('circle').attr('class', 'b')
+            // Inner highlight dot
+            g.append('circle').attr('class', 'i')
+            // Emoji icon
+            g.append('text').attr('class', 'ic')
+              .attr('text-anchor', 'middle').attr('dominant-baseline', 'central')
+              .attr('font-size', 12).attr('pointer-events', 'none')
+              .attr('opacity', 0).call(s => s.transition().duration(250).attr('opacity', 0.85))
+
+            // Label row
+            const lr = g.append('g').attr('class', 'node-label-row')
+            lr.append('rect').attr('class', 'lb')
+              .attr('rx', 5).attr('ry', 5)
+              .attr('fill', 'rgba(7,11,20,0.88)')
+              .attr('stroke', 'rgba(148,163,184,0.13)').attr('stroke-width', 1)
+            lr.append('text').attr('class', 'lt')
+              .attr('text-anchor', 'middle')
+              .attr('fill', '#f1f5f9')
+              .attr('font-family', "'Inter', system-ui, sans-serif")
+              .attr('font-size', 10).attr('font-weight', 500)
+              .attr('pointer-events', 'none')
+
+            // Entrance
+            g.attr('opacity', 0).attr('transform', 'scale(0.3)')
+              .call(s => s.transition().duration(400).ease(Math.sqrt as any)
+                .attr('opacity', 1).attr('transform', 'scale(1)'))
+
+            // Bring to center of actual transform later
+            return g
+          },
+          update => update,
+          exit => exit.call(s => s.transition().duration(200).attr('opacity', 0).remove()),
         )
-        .attr('cx', (d: SimNode): number => d.x ?? 0)
-        .attr('cy', (d: SimNode): number => d.y ?? 0)
-        .attr('title', (d: SimNode) => d.label)
+        .attr('transform', d => `translate(${d.x ?? 0},${d.y ?? 0})`)
+        .each(function (d: SimNode) {
+          const g = select(this)
+          const r = nr(d)
+          const c = nc(d)
+          const isAgent = d.id === '__agent__'
 
-      // Labels
-      const labelSel = labelGroup
-        .selectAll<SVGTextElement, SimNode>('text')
-        .data(nodesRef.current, (d: SimNode) => d.id)
+          // Halo ring
+          g.select<SVGCircleElement>('circle.h')
+            .attr('r', r + 8)
+            .attr('fill', 'none').attr('stroke', c)
+            .attr('stroke-width', 1.5)
+            .attr('stroke-opacity', isAgent ? 0.5 : 0.2)
+            .style('animation', isAgent ? 'pulse-halo 3s ease-in-out infinite' : 'none')
 
-      labelSel
-        .join(
-          (enter) =>
-            enter
-              .append('text')
-              .attr('opacity', 0)
-              .call((sel) =>
-                sel.transition().duration(500).attr('opacity', 1),
-              ),
-        )
-        .text((d: SimNode) => (d.label.length > 22 ? d.label.slice(0, 19) + '...' : d.label))
-        .attr('x', (d: SimNode): number => d.x ?? 0)
-        .attr('y', (d: SimNode): number => (d.y ?? 0) - (NODE_RADIUS[d.kind] || 5) - 4)
-        .attr('text-anchor', 'middle')
-        .attr('fill', '#9ca3af')
-        .attr('font-size', '10px')
-        .attr('font-family', "'SF Mono', 'Fira Code', monospace")
+          // Badge
+          g.select<SVGCircleElement>('circle.b')
+            .attr('r', r).attr('fill', c)
+            .attr('fill-opacity', isAgent ? 1 : 0.85)
+            .attr('filter', 'url(#gl)')
+            .attr('stroke', 'rgba(255,255,255,0.1)').attr('stroke-width', 1.2)
 
-      // Agent particle — direct ref approach for a single element
-      let agentCircle = agentGroup.select<SVGCircleElement>('circle').node()
-      if (!agentCircle) {
-        agentCircle = agentGroup
-          .append('circle')
-          .attr('r', 6)
-          .attr('fill', AGENT_COLOR)
-          .attr('filter', 'url(#agent-glow)')
-          .attr('opacity', 0.9)
-          .node()!
+          // Inner highlight
+          g.select<SVGCircleElement>('circle.i')
+            .attr('r', r * 0.35)
+            .attr('fill', 'rgba(255,255,255,0.13)')
+            .attr('cx', -r * 0.25).attr('cy', -r * 0.25)
+
+          // Icon
+          const icon = isAgent ? '' : (ICONS[d.event_type] || ' ')
+          g.select<SVGTextElement>('text.ic')
+            .text(icon).attr('y', 0)
+
+          // Label
+          const label = isAgent ? 'Agent' : d.label
+          const display = label.length > 28 ? label.slice(0, 25) + '…' : label
+          const lt = g.select<SVGTextElement>('text.lt').text(display)
+
+          const off = isAgent ? r + 18 : r + 15
+          g.select('g.node-label-row').attr('transform', `translate(0,${-off})`)
+
+          let tw: number
+          try { tw = (lt.node() as SVGTextElement).getComputedTextLength() }
+          catch { tw = display.length * 6 }
+          const bw = Math.max(tw + 16, 26)
+          g.select<SVGRectElement>('rect.lb')
+            .attr('x', -bw / 2).attr('y', -9)
+            .attr('width', bw).attr('height', 18)
+        })
+
+      // Agent particle
+      let p = agentG.select<SVGCircleElement>('circle').node()
+      if (!p) {
+        p = agentG.append('circle')
+          .attr('r', 3.5).attr('fill', '#93c5fd')
+          .attr('filter', 'url(#agl)').attr('opacity', 0.8).node()!
       }
-      select(agentCircle)
-        .attr('cx', agentPos.current.x)
-        .attr('cy', agentPos.current.y)
+      select(p).attr('cx', particlePos.current.x).attr('cy', particlePos.current.y)
     })
 
-    return () => {
-      sim.stop()
-    }
+    return () => { sim.stop() }
   }, [])
 
-  // ── Update simulation data when graph props change ───
+  // ── Sync data ──
   useEffect(() => {
     const sim = simRef.current
     if (!sim) return
+    const curIds = new Set(nodesRef.current.map(n => n.id))
+    if (!nodes.some(n => !curIds.has(n.id)) && nodesRef.current.length === nodes.length) return
 
-    const currentIds = new Set(nodesRef.current.map((n) => n.id))
-    const hasNew = nodes.some((n) => !currentIds.has(n.id))
-    if (!hasNew && nodesRef.current.length === nodes.length) return
-
-    // Preserve existing positions, assign random initial for new nodes
-    const posMap = new Map(nodesRef.current.map((n) => [n.id, { x: n.x, y: n.y }]))
-
-    const updatedNodes: SimNode[] = nodes.map((n) => {
+    const posMap = new Map(nodesRef.current.map(n => [n.id, { x: n.x, y: n.y }]))
+    const updated: SimNode[] = nodes.map(n => {
       const pos = posMap.get(n.id)
-      return {
-        ...n,
-        x: pos?.x ?? widthRef.current / 2 + (Math.random() - 0.5) * 300,
-        y: pos?.y ?? heightRef.current / 2 + (Math.random() - 0.5) * 300,
-        vx: 0,
-        vy: 0,
-        index: 0,
-      }
+      return { ...n, x: pos?.x ?? widthRef.current / 2 + (Math.random() - 0.5) * 400, y: pos?.y ?? heightRef.current / 2 + (Math.random() - 0.5) * 400, vx: 0, vy: 0, index: 0 }
     })
 
-    // Add fixed agent node so link force can resolve __agent__ references
-    const agentNodeId = '__agent__'
-    if (updatedNodes.length > 0 && !updatedNodes.find((n) => n.id === agentNodeId)) {
-      updatedNodes.unshift({
-        id: agentNodeId,
-        label: 'Agent',
-        kind: 'command' as const,
-        event_type: 'command',
-        x: widthRef.current / 2,
-        y: heightRef.current / 2,
-        fx: widthRef.current / 2,
-        fy: heightRef.current / 2,
-      } as SimNode)
+    const agentId = '__agent__'
+    if (updated.length > 0 && !updated.find(n => n.id === agentId)) {
+      updated.unshift({ id: agentId, label: 'Agent', kind: 'command' as const, event_type: 'command', x: widthRef.current / 2, y: heightRef.current / 2, fx: widthRef.current / 2, fy: heightRef.current / 2 } as SimNode)
     }
 
-    const updatedLinks: SimLink[] = edges.map((e) => ({
-      source: e.source,
-      target: e.target,
-      kind: e.kind,
-    }))
-
-    nodesRef.current = updatedNodes
-    linksRef.current = updatedLinks
-
-    sim.nodes(updatedNodes)
-    const linkForce = sim.force('link') as
-      | d3Force.ForceLink<SimNode, SimLink>
-      | undefined
-    if (linkForce) {
-      linkForce.links(updatedLinks)
-    }
+    nodesRef.current = updated
+    linksRef.current = edges.map(e => ({ source: e.source, target: e.target, kind: e.kind }))
+    sim.nodes(updated)
+    const lf = sim.force('link') as d3Force.ForceLink<SimNode, SimLink> | undefined
+    if (lf) lf.links(linksRef.current)
     sim.alpha(0.5).restart()
   }, [nodes, edges])
 
-  // ── Update agent target position ─────────────────────
   useEffect(() => {
     if (!agentPosition) return
-
-    // Find the target node's current sim position
-    const tgt = nodesRef.current.find((n) => n.id === agentPosition.target)
-    if (tgt) {
-      agentTarget.current = { x: tgt.x as number, y: tgt.y as number }
-    }
+    const tgt = nodesRef.current.find(n => n.id === agentPosition.target)
+    if (tgt) particleTarget.current = { x: tgt.x as number, y: tgt.y as number }
   }, [agentPosition])
 
-  // ── Animation loop for agent particle ────────────────
   useEffect(() => {
     let raf: number
-    const animate = () => {
-      const dx = agentTarget.current.x - agentPos.current.x
-      const dy = agentTarget.current.y - agentPos.current.y
+    const tick = () => {
+      const dx = particleTarget.current.x - particlePos.current.x
+      const dy = particleTarget.current.y - particlePos.current.y
       if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
-        agentPos.current.x += dx * 0.08
-        agentPos.current.y += dy * 0.08
+        particlePos.current.x += dx * 0.08
+        particlePos.current.y += dy * 0.08
       }
-      raf = requestAnimationFrame(animate)
+      raf = requestAnimationFrame(tick)
     }
-    raf = requestAnimationFrame(animate)
+    raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
   }, [])
 
-  // ── Responsive resize ────────────────────────────────
   const containerRef = useCallback((el: HTMLDivElement | null) => {
     if (!el) return
     const ro = new ResizeObserver(() => {
-      const w = el.clientWidth
-      const h = el.clientHeight
-      if (w > 0 && h > 0) {
-        widthRef.current = w
-        heightRef.current = h
-        const sim = simRef.current
-        if (sim) {
-          const center = sim.force('center') as
-            | d3Force.ForceCenter<SimNode>
-            | undefined
-          if (center) {
-            center.x(w / 2).y(h / 2)
-          }
-          sim.alpha(0.1).restart()
-        }
+      const w = el.clientWidth, h = el.clientHeight
+      if (w <= 0 || h <= 0) return
+      widthRef.current = w; heightRef.current = h
+      const sim = simRef.current
+      if (sim) {
+        const c = sim.force('center') as d3Force.ForceCenter<SimNode> | undefined
+        if (c) c.x(w / 2).y(h / 2)
+        sim.alpha(0.1).restart()
       }
     })
     ro.observe(el)
@@ -385,12 +336,7 @@ export default function GraphCanvas({ nodes, edges, agentPosition }: Props) {
 
   return (
     <div ref={containerRef} style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
-      <svg
-        ref={svgRef}
-        width="100%"
-        height="100%"
-        style={{ background: '#0a0e17', display: 'block' }}
-      />
+      <svg ref={svgRef} width="100%" height="100%" style={{ background: C.bg, display: 'block' }} />
     </div>
   )
 }
