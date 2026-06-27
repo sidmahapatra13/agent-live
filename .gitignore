@@ -1,0 +1,35 @@
+# Binaries
+agent-live
+agent-live.exe
+agent-live-darwin
+agent-live-linux
+
+# Go
+cli/vendor/
+
+# Node
+node_modules/
+dashboard/dist/
+
+# Environment
+.venv/
+.env
+.env.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+*.log
+/tmp/
+
+# Go specific
+*.test
+*.out
