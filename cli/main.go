@@ -64,7 +64,7 @@ func main() {
 	}()
 
 	// ── Open browser ─────────────────────────────────────
-	_ = exec.Command("open", "http://localhost:8080").Start()
+	// Note: removed auto-open. User opens http://localhost:8080 manually.
 
 	// ── Session state ────────────────────────────────────
 	sessionID := fmt.Sprintf("%x", time.Now().UnixNano())

@@ -176,9 +176,9 @@ export default function GraphCanvas({ nodes, edges, agentPosition }: Props) {
       const edgeSel = edgeGroup
         .selectAll<SVGLineElement, SimLink>('line')
         .data(linksRef.current, (d: SimLink) => {
-          const s = d.source as SimNode
-          const t = d.target as SimNode
-          return `${s.id}-${t.id}`
+          const sId = typeof d.source === 'string' ? d.source : (d.source as SimNode).id
+          const tId = typeof d.target === 'string' ? d.target : (d.target as SimNode).id
+          return `${sId}-${tId}`
         })
 
       edgeSel
@@ -187,10 +187,22 @@ export default function GraphCanvas({ nodes, edges, agentPosition }: Props) {
         .attr('stroke', (d: SimLink) => EDGE_COLORS[d.kind] || '#374151')
         .attr('stroke-width', 1.5)
         .attr('stroke-opacity', 0.4)
-        .attr('x1', (d: SimLink): number => ((d.source as SimNode).x ?? 0))
-        .attr('y1', (d: SimLink): number => ((d.source as SimNode).y ?? 0))
-        .attr('x2', (d: SimLink): number => ((d.target as SimNode).x ?? 0))
-        .attr('y2', (d: SimLink): number => ((d.target as SimNode).y ?? 0))
+        .attr('x1', (d: SimLink): number => {
+          const s = d.source
+          return typeof s === 'string' ? 0 : (s as SimNode).x ?? 0
+        })
+        .attr('y1', (d: SimLink): number => {
+          const s = d.source
+          return typeof s === 'string' ? 0 : (s as SimNode).y ?? 0
+        })
+        .attr('x2', (d: SimLink): number => {
+          const t = d.target
+          return typeof t === 'string' ? 0 : (t as SimNode).x ?? 0
+        })
+        .attr('y2', (d: SimLink): number => {
+          const t = d.target
+          return typeof t === 'string' ? 0 : (t as SimNode).y ?? 0
+        })
 
       // Nodes
       const nodeSel = nodeGroup
