@@ -72,8 +72,8 @@ export default function StatusBar({ connected, reconnecting, filesRead, filesWri
 
       {/* Counters */}
       <span style={{ display: 'flex', gap: 10 }}>
-        <span><span style={{ color: COUNT_COLORS.reads, fontWeight: 600 }}>{filesRead}</span><span style={{ color: '#475569', marginLeft: 2 }}>rd</span></span>
-        <span><span style={{ color: COUNT_COLORS.writes, fontWeight: 600 }}>{filesWritten}</span><span style={{ color: '#475569', marginLeft: 2 }}>wr</span></span>
+        <span><span style={{ color: COUNT_COLORS.reads, fontWeight: 600 }}>{filesRead}</span><span style={{ color: '#475569', marginLeft: 2 }}>read</span></span>
+        <span><span style={{ color: COUNT_COLORS.writes, fontWeight: 600 }}>{filesWritten}</span><span style={{ color: '#475569', marginLeft: 2 }}>write</span></span>
         <span><span style={{ color: COUNT_COLORS.cmds, fontWeight: 600 }}>{commands}</span><span style={{ color: '#475569', marginLeft: 2 }}>cmd</span></span>
       </span>
 
