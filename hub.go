@@ -20,16 +20,26 @@ type Hub struct {
 const maxHistory = 500
 
 // NewHub creates a new WebSocket hub.
-func NewHub() *Hub {
-	return &Hub{
+// allowedOrigin restricts which Origin header is accepted on WebSocket upgrade.
+// When empty, all origins are allowed (insecure — use only in dev).
+func NewHub(allowedOrigin string) *Hub {
+	h := &Hub{
 		clients: make(map[*websocket.Conn]bool),
 		history: make([][]byte, 0, maxHistory),
-		upgrader: websocket.Upgrader{
-			CheckOrigin: func(r *http.Request) bool {
-				return true // dev mode — tighten for prod
-			},
+	}
+	h.upgrader = websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool {
+			if allowedOrigin == "" {
+				return true // no restriction (dev mode)
+			}
+			origin := r.Header.Get("Origin")
+			if origin == "" {
+				return true // allow non-browser clients (curl, code) without Origin
+			}
+			return origin == allowedOrigin
 		},
 	}
+	return h
 }
 
 // HandleWS upgrades an HTTP connection to WebSocket.

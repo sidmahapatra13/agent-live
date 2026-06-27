@@ -223,6 +223,12 @@ export default function App() {
       edgeList.current = el.slice(-800)
     }
 
+    // Cap node map to prevent unbounded memory growth
+    if (nm.size > 500) {
+      const oldest = nm.keys().next().value
+      if (oldest !== undefined) nm.delete(oldest)
+    }
+
     setGraphTick((t) => t + 1)
   })
 

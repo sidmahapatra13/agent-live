@@ -27,6 +27,7 @@ const version = "0.1.0"
 func main() {
 	// ── CLI flags ────────────────────────────────────────
 	port := flag.Int("port", 8080, "HTTP server port")
+	origin := flag.String("origin", "", "Allowed WebSocket origin (default: http://localhost:<port>)")
 	showVersion := flag.Bool("version", false, "Show version and exit")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Agent-live v%s — Watch your AI coding agent in real time.\n\n", version)
@@ -37,6 +38,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "\nExamples:\n")
 		fmt.Fprintf(os.Stderr, "  agent-live run -- opencode \"explain this repo\"\n")
 		fmt.Fprintf(os.Stderr, "  agent-live --port 9090 run -- claude \"write tests\"\n")
+		fmt.Fprintf(os.Stderr, "  agent-live --origin https://example.com run -- ...\n")
 	}
 	flag.Parse()
 
@@ -65,7 +67,11 @@ func main() {
 	cmdArgs = cmdArgs[1:]
 
 	// ── Hub ──────────────────────────────────────────────
-	hub := NewHub()
+	originVal := *origin
+	if originVal == "" {
+		originVal = fmt.Sprintf("http://localhost:%d", *port)
+	}
+	hub := NewHub(originVal)
 
 	// ── HTTP server ──────────────────────────────────────
 	mux := http.NewServeMux()

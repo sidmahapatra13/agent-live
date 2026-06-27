@@ -75,6 +75,7 @@ export default function GraphCanvas({ nodes, edges, agentPosition }: Props) {
   const heightRef = useRef(600)
   const particlePos = useRef({ x: 200, y: 200 })
   const particleTarget = useRef({ x: 200, y: 200 })
+  const hasParticleTarget = useRef(false)
 
   // ── Init ──
   useEffect(() => {
@@ -258,14 +259,18 @@ export default function GraphCanvas({ nodes, edges, agentPosition }: Props) {
             .attr('width', bw).attr('height', 18)
         })
 
-      // Agent particle
-      let p = agentG.select<SVGCircleElement>('circle').node()
-      if (!p) {
-        p = agentG.append('circle')
-          .attr('r', 3.5).attr('fill', '#93c5fd')
-          .attr('filter', 'url(#agl)').attr('opacity', 0.8).node()!
+      // Agent particle — only render once we have a target
+      if (hasParticleTarget.current) {
+        let p = agentG.select<SVGCircleElement>('circle').node()
+        if (!p) {
+          p = agentG.append('circle')
+            .attr('r', 3.5).attr('fill', '#93c5fd')
+            .attr('filter', 'url(#agl)').attr('opacity', 0.8).node()!
+        }
+        select(p).attr('cx', particlePos.current.x).attr('cy', particlePos.current.y)
+      } else {
+        agentG.selectAll('circle').remove()
       }
-      select(p).attr('cx', particlePos.current.x).attr('cy', particlePos.current.y)
     })
 
     return () => { sim.stop() }
@@ -298,7 +303,11 @@ export default function GraphCanvas({ nodes, edges, agentPosition }: Props) {
   }, [nodes, edges])
 
   useEffect(() => {
-    if (!agentPosition) return
+    if (!agentPosition) {
+      hasParticleTarget.current = false
+      return
+    }
+    hasParticleTarget.current = true
     const tgt = nodesRef.current.find(n => n.id === agentPosition.target)
     if (tgt) particleTarget.current = { x: tgt.x as number, y: tgt.y as number }
   }, [agentPosition])
