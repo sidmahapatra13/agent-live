@@ -156,7 +156,7 @@ func (p *openCodeParser) parseJSONToolUse(part json.RawMessage) *ParsedLine {
 		if input.FilePath != "" {
 			return &ParsedLine{EventType: "file_write", Payload: input.FilePath}
 		}
-	case "command", "run", "execute":
+	case "command", "run", "execute", "bash":
 		cmd := input.Command
 		if cmd == "" {
 			cmd = pctx.Tool
