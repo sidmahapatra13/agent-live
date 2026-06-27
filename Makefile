@@ -14,8 +14,17 @@ dashboard:
 	cd dashboard && npx vite build
 
 # Build the Go binary (assumes dashboard/dist is up-to-date)
-build:
+build: deps tscheck dashboard
 	$(GO) build -o agent-live .
+
+# Cross-compile for release
+release: clean
+	$(GO) build -o agent-live-darwin-arm64 .
+	GOOS=darwin GOARCH=amd64 $(GO) build -o agent-live-darwin-amd64 .
+	GOOS=linux GOARCH=amd64 $(GO) build -o agent-live-linux-amd64 .
+	GOOS=linux GOARCH=arm64 $(GO) build -o agent-live-linux-arm64 .
+	@echo "Release binaries:"
+	@ls -lh agent-live-*
 
 # Run Go lint/check
 check:

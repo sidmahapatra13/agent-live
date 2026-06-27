@@ -124,6 +124,15 @@ export default function App() {
     connect()
   }, [connect])
 
+  // Fetch server-side config for node/edge caps
+  const limitsRef = useRef({ maxNodes: 500, maxEdges: 1000 })
+  useEffect(() => {
+    fetch('/config').then(r => r.json()).then(cfg => {
+      if (cfg.maxNodes) limitsRef.current.maxNodes = cfg.maxNodes
+      if (cfg.maxEdges) limitsRef.current.maxEdges = cfg.maxEdges
+    }).catch(() => { /* use defaults */ })
+  }, [])
+
   // Track graph state via refs (avoids re-render cascades)
   const nodeMapRef = useRef<Map<string, NodeDef>>(new Map())
   const edgeListRef = useRef<EdgeDef[]>([])
@@ -150,12 +159,15 @@ export default function App() {
   const nodeMap = nodeMapRef
   const edgeList = edgeListRef
   const lastNode = lastNodeRef
+  const limits = limitsRef
 
   // Process an event into graph nodes/edges
   const processEvent = useRef((event: Event) => {
     const { type, payload } = event
     const nm = nodeMap.current
     const el = edgeList.current
+    const maxE = limits.current.maxEdges
+    const maxN = limits.current.maxNodes
     const AGENT = '__agent__'
 
     switch (type) {
@@ -219,14 +231,18 @@ export default function App() {
     }
 
     // Trim edge list to keep perf reasonable
-    if (el.length > 1000) {
-      edgeList.current = el.slice(-800)
+    if (el.length > maxE) {
+      edgeList.current = el.slice(-Math.round(maxE * 0.8))
     }
 
     // Cap node map to prevent unbounded memory growth
-    if (nm.size > 500) {
+    if (nm.size > maxN) {
       const oldest = nm.keys().next().value
-      if (oldest !== undefined) nm.delete(oldest)
+      if (oldest !== undefined) {
+        nm.delete(oldest)
+        // Remove edges that reference the deleted node
+        edgeList.current = el.filter(e => e.source !== oldest && e.target !== oldest)
+      }
     }
 
     setGraphTick((t) => t + 1)
@@ -241,9 +257,6 @@ export default function App() {
   const graphData = useMemo(() => ({
     nodes: Array.from(nodeMapRef.current.values()),
     edges: edgeListRef.current,
-    agentPosition: lastNodeRef.current
-      ? { source: '__agent__', target: lastNodeRef.current }
-      : null,
   }), [graphTick])
 
   return (
@@ -253,7 +266,6 @@ export default function App() {
         <GraphCanvas
           nodes={graphData.nodes}
           edges={graphData.edges}
-          agentPosition={graphData.agentPosition}
         />
         <Timeline events={events} />
       </div>

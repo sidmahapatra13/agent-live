@@ -11,21 +11,24 @@ import (
 // Hub maintains a set of active WebSocket connections and broadcasts events.
 // It also keeps a rolling history of recent events for replay to new clients.
 type Hub struct {
-	mu       sync.RWMutex
-	clients  map[*websocket.Conn]bool
-	history  [][]byte // rolling buffer of recent events
-	upgrader websocket.Upgrader
+	mu         sync.RWMutex
+	clients    map[*websocket.Conn]bool
+	history    [][]byte // rolling buffer of recent events
+	historyMax int
+	upgrader   websocket.Upgrader
 }
-
-const maxHistory = 500
 
 // NewHub creates a new WebSocket hub.
 // allowedOrigin restricts which Origin header is accepted on WebSocket upgrade.
 // When empty, all origins are allowed (insecure — use only in dev).
-func NewHub(allowedOrigin string) *Hub {
+func NewHub(allowedOrigin string, historyMax int) *Hub {
+	if historyMax < 1 {
+		historyMax = 500
+	}
 	h := &Hub{
-		clients: make(map[*websocket.Conn]bool),
-		history: make([][]byte, 0, maxHistory),
+		clients:    make(map[*websocket.Conn]bool),
+		history:    make([][]byte, 0, historyMax),
+		historyMax: historyMax,
 	}
 	h.upgrader = websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool {
@@ -36,10 +39,50 @@ func NewHub(allowedOrigin string) *Hub {
 			if origin == "" {
 				return true // allow non-browser clients (curl, code) without Origin
 			}
-			return origin == allowedOrigin
+			// Normalise: strip port/scheme for comparison
+			if origin == allowedOrigin {
+				return true
+			}
+			// Accept localhost variants as equivalent
+			host := stripScheme(origin)
+			return host == "localhost" || host == "127.0.0.1" || host == "[::1]"
 		},
 	}
 	return h
+}
+
+// stripScheme removes http[s]:// prefix from a URL.
+func stripScheme(s string) string {
+	for _, p := range []string{"https://", "http://", "wss://", "ws://"} {
+		if len(s) > len(p) && s[:len(p)] == p {
+			s = s[len(p):]
+		}
+	}
+	// Strip port suffix (IPv6-safe: only strip if :digit port)
+	if idx := stringsLastIndexByte(s, ':'); idx > 0 {
+		after := s[idx+1:]
+		isPort := true
+		for _, c := range after {
+			if c < '0' || c > '9' {
+				isPort = false
+				break
+			}
+		}
+		if isPort {
+			s = s[:idx]
+		}
+	}
+	return s
+}
+
+// stringsLastIndexByte avoids importing strings for one call.
+func stringsLastIndexByte(s string, c byte) int {
+	for i := len(s) - 1; i >= 0; i-- {
+		if s[i] == c {
+			return i
+		}
+	}
+	return -1
 }
 
 // HandleWS upgrades an HTTP connection to WebSocket.
@@ -63,16 +106,17 @@ func (h *Hub) HandleWS(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	count := len(h.clients)
+	histLen := len(h.history)
 	h.mu.Unlock()
 
-	log.Printf("WS client connected (%d total, %d history events replayed)", len(h.clients), len(h.history))
+	log.Printf("WS client connected (%d total, %d history events replayed)", count, histLen)
 
 	defer func() {
 		h.mu.Lock()
 		delete(h.clients, conn)
 		h.mu.Unlock()
 		conn.Close()
-		log.Printf("WS client disconnected (%d remaining)", len(h.clients))
 	}()
 
 	for {
@@ -85,23 +129,35 @@ func (h *Hub) HandleWS(w http.ResponseWriter, r *http.Request) {
 
 // Broadcast sends a JSON message to all connected clients
 // and appends it to the rolling history buffer.
+// Client list is copied under lock; writes happen outside lock so
+// one slow/dead client doesn't block all other broadcasts.
 func (h *Hub) Broadcast(data []byte) {
 	h.mu.Lock()
-	defer h.mu.Unlock()
-
 	// Store in history (rolling buffer)
-	if len(h.history) >= maxHistory {
+	if len(h.history) >= h.historyMax {
 		h.history = append(h.history[1:], data)
 	} else {
 		h.history = append(h.history, data)
 	}
-
-	// Send to all connected clients
+	// Copy client list so we can write outside lock
+	clients := make([]*websocket.Conn, 0, len(h.clients))
 	for conn := range h.clients {
+		clients = append(clients, conn)
+	}
+	h.mu.Unlock()
+
+	// Write to all clients (outside lock)
+	for _, conn := range clients {
 		if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
 			log.Printf("WS write error: %v", err)
 			conn.Close()
-			delete(h.clients, conn)
+			h.removeClient(conn)
 		}
 	}
+}
+
+func (h *Hub) removeClient(conn *websocket.Conn) {
+	h.mu.Lock()
+	delete(h.clients, conn)
+	h.mu.Unlock()
 }

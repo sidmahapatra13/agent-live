@@ -40,14 +40,6 @@ const EDGE: Record<string, string> = {
   exec:  '#f59e0b',
 }
 
-const ICONS: Record<string, string> = {
-  file_read:  '📖',
-  file_write: '✏️',
-  command:    '⚡',
-  thought:    '💭',
-  plan_step:  '🎯',
-}
-
 const NODE_R = { file: 22, command: 24, thought: 20 }
 const AGENT_R = 28
 
@@ -63,20 +55,15 @@ function edgeKey(d: SimLink): string {
 type Props = {
   nodes: NodeDef[]
   edges: EdgeDef[]
-  agentPosition: { source: string; target: string } | null
 }
 
-export default function GraphCanvas({ nodes, edges, agentPosition }: Props) {
+export default function GraphCanvas({ nodes, edges }: Props) {
   const svgRef = useRef<SVGSVGElement>(null)
   const simRef = useRef<d3Force.Simulation<SimNode, SimLink> | null>(null)
   const nodesRef = useRef<SimNode[]>([])
   const linksRef = useRef<SimLink[]>([])
   const widthRef = useRef(800)
   const heightRef = useRef(600)
-  const particlePos = useRef({ x: 200, y: 200 })
-  const particleTarget = useRef({ x: 200, y: 200 })
-  const hasParticleTarget = useRef(false)
-
   // ── Init ──
   useEffect(() => {
     const svgEl = svgRef.current
@@ -134,7 +121,6 @@ export default function GraphCanvas({ nodes, edges, agentPosition }: Props) {
     // Z-groups
     const edgesG = root.append('g')
     const nodesG = root.append('g')
-    const agentG = root.append('g')
 
     // Simulation
     const sim = d3Force.forceSimulation<SimNode>(nodesRef.current)
@@ -179,12 +165,6 @@ export default function GraphCanvas({ nodes, edges, agentPosition }: Props) {
             g.append('circle').attr('class', 'b')
             // Inner highlight dot
             g.append('circle').attr('class', 'i')
-            // Emoji icon
-            g.append('text').attr('class', 'ic')
-              .attr('text-anchor', 'middle').attr('dominant-baseline', 'central')
-              .attr('font-size', 12).attr('pointer-events', 'none')
-              .attr('opacity', 0).call(s => s.transition().duration(250).attr('opacity', 0.85))
-
             // Label row
             const lr = g.append('g').attr('class', 'node-label-row')
             lr.append('rect').attr('class', 'lb')
@@ -227,7 +207,7 @@ export default function GraphCanvas({ nodes, edges, agentPosition }: Props) {
           // Badge
           g.select<SVGCircleElement>('circle.b')
             .attr('r', r).attr('fill', c)
-            .attr('fill-opacity', isAgent ? 1 : 0.85)
+            .attr('fill-opacity', 1)
             .attr('filter', 'url(#gl)')
             .attr('stroke', 'rgba(255,255,255,0.1)').attr('stroke-width', 1.2)
 
@@ -236,11 +216,6 @@ export default function GraphCanvas({ nodes, edges, agentPosition }: Props) {
             .attr('r', r * 0.35)
             .attr('fill', 'rgba(255,255,255,0.13)')
             .attr('cx', -r * 0.25).attr('cy', -r * 0.25)
-
-          // Icon
-          const icon = isAgent ? '' : (ICONS[d.event_type] || ' ')
-          g.select<SVGTextElement>('text.ic')
-            .text(icon).attr('y', 0)
 
           // Label
           const label = isAgent ? 'Agent' : d.label
@@ -258,19 +233,6 @@ export default function GraphCanvas({ nodes, edges, agentPosition }: Props) {
             .attr('x', -bw / 2).attr('y', -9)
             .attr('width', bw).attr('height', 18)
         })
-
-      // Agent particle — only render once we have a target
-      if (hasParticleTarget.current) {
-        let p = agentG.select<SVGCircleElement>('circle').node()
-        if (!p) {
-          p = agentG.append('circle')
-            .attr('r', 3.5).attr('fill', '#93c5fd')
-            .attr('filter', 'url(#agl)').attr('opacity', 0.8).node()!
-        }
-        select(p).attr('cx', particlePos.current.x).attr('cy', particlePos.current.y)
-      } else {
-        agentG.selectAll('circle').remove()
-      }
     })
 
     return () => { sim.stop() }
@@ -302,35 +264,6 @@ export default function GraphCanvas({ nodes, edges, agentPosition }: Props) {
     sim.alpha(0.5).restart()
   }, [nodes, edges])
 
-  useEffect(() => {
-    if (!agentPosition) {
-      hasParticleTarget.current = false
-      return
-    }
-    hasParticleTarget.current = true
-    // Start particle from the agent node's position (canvas center)
-    const src = nodesRef.current.find(n => n.id === agentPosition.source)
-    if (src) {
-      particlePos.current = { x: src.x as number, y: src.y as number }
-    }
-    const tgt = nodesRef.current.find(n => n.id === agentPosition.target)
-    if (tgt) particleTarget.current = { x: tgt.x as number, y: tgt.y as number }
-  }, [agentPosition])
-
-  useEffect(() => {
-    let raf: number
-    const tick = () => {
-      const dx = particleTarget.current.x - particlePos.current.x
-      const dy = particleTarget.current.y - particlePos.current.y
-      if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
-        particlePos.current.x += dx * 0.08
-        particlePos.current.y += dy * 0.08
-      }
-      raf = requestAnimationFrame(tick)
-    }
-    raf = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(raf)
-  }, [])
 
   const containerRef = useCallback((el: HTMLDivElement | null) => {
     if (!el) return

@@ -76,7 +76,7 @@ agent-live run -- <agent-command>
 - [x] End-to-end: `agent-live run -- opencode "prompt"` captures real events
 - [x] README with architecture diagram, quick start, usage guides
 - [x] **Embedded frontend** in Go binary via `go:embed` — single-file distribution
-- [x] **CLI flags** — `--port`, `--help`, `--version`
+- [x] **CLI flags** — `--port`, `--host`, `--origin`, `--help`, `--version`
 - [x] **WebSocket reconnection** — exponential backoff (1s–30s) with jitter
 - [x] **Go module at project root** — no more `cli/` subdirectory module
 - [x] **Dashboard UI redesign** (2026-06-27):
@@ -88,7 +88,7 @@ agent-live run -- <agent-command>
   - Agent pulsing halo animation (CSS keyframes)
   - Inner highlight dot on all nodes for depth
   - Improved force simulation parameters (charge -500, collision 50, distance 180)
-  - Compact status bar with rd/wr/cmd shorthand counters
+  - Compact status bar with read/write/cmd counters
   - Redesigned timeline panel: 300px, word-wrap for long payloads, sticky header, compact spacing
   - Global CSS: Inter font, CSS custom properties, custom scrollbar, deeper dark theme
 - [x] **Full CI pipeline**: `make check` (go vet), `make build` (vite + go), `make ci` (tsc + vet + vite + go)
@@ -109,23 +109,23 @@ agent-live run -- <agent-command>
 - [x] **Edge key function fixed**: Handles string refs properly
 - [x] **Auto-open removed**: User opens dashboard manually
 - [x] **Embedded dashboard**: Single binary distribution
-- [x] **WS reconnection**: Exponential backoff with jitter
-- [x] **Go module at root**: Cleaner project structure
+- [x] **WS origin allowlist** — `--origin` flag + automatic localhost/127.0.0.1/[::1] equivalence
+- [x] **Parser tests** — 22 tests covering JSON, regex, chunking, ANSI, and WS origin
+- [x] **Node/edge cap consistency** — orphaned edges cleaned up when node map is trimmed
 
 ## What's Not (MVP Roadmap)
 
-- [ ] README with demo GIF and setup instructions
 - [ ] Publish to GitHub
 - [ ] Claude Code and Codex adapters
 - [ ] Session recording and replay
-- [ ] Tighten `CheckOrigin` for production
+- [ ] Demo GIF / hero screenshot in README
 - [ ] Collapsible timeline panel for smaller screens
 
 ## Known Issues
 
-- Agent particle starts at (100, 100) before first event positions it — minor cosmetic
 - Edge list capped at 1000 entries — graph shows last 800 edges
 - Node labels truncated at 28 chars — full path visible in timeline
+- Timeline can show duplicate Agent-finished entries under rare race conditions
 
 ## Open Questions
 

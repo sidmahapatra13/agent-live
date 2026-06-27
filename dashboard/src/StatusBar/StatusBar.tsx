@@ -30,10 +30,19 @@ const COUNT_COLORS = { reads: '#60a5fa', writes: '#34d399', cmds: '#fbbf24' }
 export default function StatusBar({ connected, reconnecting, filesRead, filesWritten, commands, elapsed, status }: Props) {
   const [t, setT] = useState('0:00')
   const start = useRef<number | null>(null)
+  const lastServerElapsed = useRef(0)
   const run = status === 'running' || status === 'reading' || status === 'writing'
 
   useEffect(() => {
-    if (run && start.current === null) start.current = Date.now()
+    if (run) {
+      // Use server elapsed as anchor if available, else start from now
+      if (elapsed > 0 && start.current === null) {
+        lastServerElapsed.current = elapsed
+        start.current = Date.now() - elapsed * 1000
+      } else if (start.current === null) {
+        start.current = Date.now()
+      }
+    }
     if (status === 'done') { setT(fmt(elapsed)); start.current = null }
     const iv = setInterval(() => { if (start.current !== null) setT(fmt(Math.floor((Date.now() - start.current!) / 1000))) }, 500)
     return () => clearInterval(iv)

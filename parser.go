@@ -7,7 +7,7 @@ import (
 )
 
 // ansiEscapeRe matches ANSI escape sequences (SGR codes, etc.)
-var ansiEscapeRe = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+var ansiEscapeRe = regexp.MustCompile(`\x1b\[[?0-9;]*[a-zA-Z]`)
 
 // stripAnsi removes ANSI escape codes from a string.
 func stripAnsi(s string) string {
@@ -70,7 +70,7 @@ func newOpenCodeParser() *openCodeParser {
 		globRe:      regexp.MustCompile(`(?i)✱\s+Glob\s+(.+?)\s+\d+\s+match`),
 		grepRe:      regexp.MustCompile(`(?i)✱\s+Grep\s+(.+)`),
 		planStepRe:  regexp.MustCompile(`(?i)(?:step\s+\d+:|##\s+step)\s*(.+)`),
-		doneRe:      regexp.MustCompile(`(?i)^(?:done|complete|finished|successfully)`),
+		doneRe:      nil, // no regex — process-level EventDone from cmd.Wait() is authoritative
 	}
 }
 
@@ -146,19 +146,24 @@ func (p *openCodeParser) parseJSON(line string) *ParsedLine {
 		return nil
 	}
 
+	var result *ParsedLine
 	switch evt.Type {
 	case "tool_use":
-		return p.parseJSONToolUse(evt.Part)
+		result = p.parseJSONToolUse(evt.Part)
 	case "text":
-		return p.parseJSONText(evt.Part)
+		result = p.parseJSONText(evt.Part)
 	case "error":
-		return &ParsedLine{EventType: "error", Payload: line}
+		result = &ParsedLine{EventType: "error", Payload: line}
 	case "step_start", "step_finish":
-		// lifecycle events, skip
-		return skipLine
+		result = skipLine
 	default:
-		return nil
+		result = nil
 	}
+	// If the line was valid JSON (even if suppressed), don't fall through to regex/thought
+	if result == nil {
+		result = skipLine
+	}
+	return result
 }
 
 func (p *openCodeParser) parseJSONToolUse(part json.RawMessage) *ParsedLine {
@@ -259,7 +264,7 @@ func (p *openCodeParser) parseRegex(line string) *ParsedLine {
 		}
 		return &ParsedLine{EventType: "plan_step", Payload: line}
 
-	case p.doneRe.MatchString(line):
+	case p.doneRe != nil && p.doneRe.MatchString(line):
 		return &ParsedLine{EventType: "done", Payload: "Agent finished"}
 
 	default:

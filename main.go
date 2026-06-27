@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"encoding/json"
 	"flag"
@@ -12,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"strconv"
 	"sync"
 	"syscall"
 	"time"
@@ -27,7 +29,12 @@ const version = "0.1.0"
 func main() {
 	// ── CLI flags ────────────────────────────────────────
 	port := flag.Int("port", 8080, "HTTP server port")
-	origin := flag.String("origin", "", "Allowed WebSocket origin (default: http://localhost:<port>)")
+	host := flag.String("host", "127.0.0.1", "HTTP server host (0.0.0.0 for all interfaces)")
+	origin := flag.String("origin", "", "Allowed WebSocket origin (default: http://<host>:<port>)")
+	exitWhenDone := flag.Bool("exit-when-done", false, "Exit server when agent finishes (no keep-alive)")
+	historySize := flag.Int("history-size", 500, "Max WebSocket history events to replay")
+	maxNodes := flag.Int("max-nodes", 500, "Max graph nodes before pruning")
+	maxEdges := flag.Int("max-edges", 1000, "Max graph edges before pruning")
 	showVersion := flag.Bool("version", false, "Show version and exit")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Agent-live v%s — Watch your AI coding agent in real time.\n\n", version)
@@ -37,8 +44,8 @@ func main() {
 		flag.PrintDefaults()
 		fmt.Fprintf(os.Stderr, "\nExamples:\n")
 		fmt.Fprintf(os.Stderr, "  agent-live run -- opencode \"explain this repo\"\n")
-		fmt.Fprintf(os.Stderr, "  agent-live --port 9090 run -- claude \"write tests\"\n")
-		fmt.Fprintf(os.Stderr, "  agent-live --origin https://example.com run -- ...\n")
+		fmt.Fprintf(os.Stderr, "  agent-live -host 0.0.0.0 -port 9090 run -- claude \"write tests\"\n")
+		fmt.Fprintf(os.Stderr, "  agent-live -exit-when-done run -- opencode \"lint\"\n")
 	}
 	flag.Parse()
 
@@ -53,7 +60,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// agent command is everything after "run" (optional "--" separator)
 	cmdArgs := args[1:]
 	if len(cmdArgs) > 0 && cmdArgs[0] == "--" {
 		cmdArgs = cmdArgs[1:]
@@ -69,24 +75,28 @@ func main() {
 	// ── Hub ──────────────────────────────────────────────
 	originVal := *origin
 	if originVal == "" {
-		originVal = fmt.Sprintf("http://localhost:%d", *port)
+		originVal = fmt.Sprintf("http://%s:%d", *host, *port)
 	}
-	hub := NewHub(originVal)
+	hub := NewHub(originVal, *historySize)
 
 	// ── HTTP server ──────────────────────────────────────
 	mux := http.NewServeMux()
-
-	// WebSocket endpoint
 	mux.HandleFunc("/ws", hub.HandleWS)
+	mux.HandleFunc("/config", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]int{
+			"maxNodes": *maxNodes,
+			"maxEdges": *maxEdges,
+		})
+	})
 
-	// Static files — serve from embedded dashboard
 	distFS, err := fs.Sub(dashboardFS, "dashboard/dist")
 	if err != nil {
 		log.Fatalf("Failed to load embedded dashboard: %v", err)
 	}
 	mux.Handle("/", http.FileServer(http.FS(distFS)))
 
-	addr := fmt.Sprintf(":%d", *port)
+	addr := fmt.Sprintf("%s:%d", *host, *port)
 	server := &http.Server{
 		Addr:    addr,
 		Handler: mux,
@@ -105,19 +115,16 @@ func main() {
 
 	// ── Create PTY ───────────────────────────────────────
 	cmd := exec.Command(cmdName, cmdArgs...)
-
 	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 40, Cols: 160})
 	if err != nil {
 		log.Fatalf("Failed to start PTY: %v", err)
 	}
 	defer ptmx.Close()
-
 	log.Printf("Session started — PID %d", cmd.Process.Pid)
 
 	// ── Parser ───────────────────────────────────────────
 	parser := newOpenCodeParser()
 
-	// doneCh is closed when the agent process finishes (PTY read loop ends)
 	doneCh := make(chan struct{})
 	var closeOnce sync.Once
 	safeClose := func() { closeOnce.Do(func() { close(doneCh) }) }
@@ -131,7 +138,6 @@ func main() {
 				if err != io.EOF {
 					log.Printf("PTY read error: %v", err)
 				}
-				// Flush any remaining buffered data as a final event
 				if pl := parser.Flush(); pl != nil {
 					ts := time.Since(startTime).Seconds()
 					evt := Event{
@@ -162,7 +168,6 @@ func main() {
 					Payload:   line.Payload,
 					SessionID: sessionID,
 				}
-
 				data, err := json.Marshal(evt)
 				if err != nil {
 					continue
@@ -172,36 +177,73 @@ func main() {
 		}
 	}()
 
-	// Wait for agent to finish, then send done event and close PTY
+	// Wait for agent to finish, capture exit code
+	var exitCode int
+	done := make(chan struct{})
 	go func() {
-		_ = cmd.Wait()
-		// Give the PTY read loop time to drain remaining data
-		// before closing the PTY (which discards unread buffer)
+		if err := cmd.Wait(); err != nil {
+			if ee, ok := err.(*exec.ExitError); ok {
+				exitCode = ee.ExitCode()
+			} else {
+				exitCode = 1
+			}
+		}
 		time.Sleep(100 * time.Millisecond)
 		ptmx.Close()
+
 		ts := time.Since(startTime).Seconds()
+		payload := "Agent finished"
+		if exitCode != 0 {
+			payload = fmt.Sprintf("Agent finished (exit code %d)", exitCode)
+		}
 		evt := Event{
 			Type:      EventDone,
 			Timestamp: ts,
-			Payload:   "Agent finished",
+			Payload:   payload,
 			SessionID: sessionID,
 		}
 		data, _ := json.Marshal(evt)
 		hub.Broadcast(data)
 		safeClose()
+		close(done)
 	}()
 
-	// Wait for agent to finish, then keep server alive
+	// Wait for agent to finish
 	<-doneCh
-	log.Printf("Agent finished — dashboard stays open at http://localhost%s", addr)
+	log.Printf("Agent finished — exit code %d", exitCode)
+
+	if *exitWhenDone {
+		log.Println("Shutting down (--exit-when-done)...")
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		server.Shutdown(ctx)
+		os.Exit(exitCode)
+	}
+
+	// Keep-alive mode: wait for Ctrl+C
+	log.Printf("Dashboard stays open at http://localhost%s", addr)
 	log.Println("Press Ctrl+C to stop the server.")
 
-	// Keep server alive until Ctrl+C
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	<-sigCh
 
 	log.Println("Shutting down...")
-	server.Close()
-	log.Println("Done.")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	server.Shutdown(ctx)
+	os.Exit(exitCode)
+}
+
+// parseIntParam parses an int query param with a default.
+func parseIntParam(r *http.Request, key string, defaultVal int) int {
+	v := r.URL.Query().Get(key)
+	if v == "" {
+		return defaultVal
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return defaultVal
+	}
+	return n
 }

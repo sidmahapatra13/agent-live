@@ -65,9 +65,11 @@ Open [http://localhost:8080](http://localhost:8080) in your browser to see the l
 ### Options
 
 ```bash
-agent-live --port 9090 run -- opencode "prompt"    # Custom port
-agent-live -help                                     # Show usage
-agent-live -version                                  # Show version
+agent-live -host 127.0.0.1 -port 9090 run -- opencode "prompt"     # Custom host & port (default: 127.0.0.1:8080)
+agent-live -host 0.0.0.0                                            # Listen on all interfaces
+agent-live -origin https://myapp.com run -- ...                     # Restrict WS origin
+agent-live -help                                                    # Show usage
+agent-live -version                                                 # Show version
 ```
 
 ---
@@ -121,20 +123,27 @@ agent-live run -- opencode "prompt"
 
 ---
 
-## Usage
+### Usage
 
-### Basic
+Agent-live supports two event capture modes:
+
+**Recommended — JSON mode (OpenCode only):**
 
 ```bash
-# Run with OpenCode (recommended for best JSON event support)
+# OpenCode with JSON event format produces rich, structured events
 agent-live run -- opencode run --format json --model opencode/deepseek-v4-flash "your prompt"
-
-# Run with any CLI agent (regex fallback mode)
-agent-live run -- claude "write a README"
-
-# Run on a different port
-agent-live --port 9090 run -- opencode "explain this repo"
 ```
+
+**Generic — regex fallback (any agent):**
+
+```bash
+# Works with any CLI agent (Claude Code, Codex, etc.)
+agent-live run -- claude "write a README"
+```
+
+Agent-live inspects each line of output and attempts to parse it as JSON first (for `opencode run --format json`), then falls back to regex pattern matching on plain text. This means all agents work out of the box, with richer events from OpenCode's JSON mode.
+
+### Options
 
 ### OpenCode Server Mode
 

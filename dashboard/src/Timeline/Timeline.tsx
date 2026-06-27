@@ -22,15 +22,15 @@ const EV: Record<string, { color: string; icon: string; label: string }> = {
 function describeEvent(ev: Event): string {
   switch (ev.type) {
     case 'file_read':
-      return `Read file \`${ev.payload}\``
+      return `The agent read the file \`${ev.payload}\``
     case 'file_write':
-      return `Wrote to \`${ev.payload}\``
+      return `The agent wrote to \`${ev.payload}\``
     case 'command':
-      return `Ran command: \`${ev.payload}\``
+      return `The agent ran \`${ev.payload}\``
     case 'thought':
-      return `Thought: ${ev.payload}`
+      return `The agent thought: ${ev.payload}`
     case 'plan_step':
-      return `Plan step: ${ev.payload}`
+      return `The agent planned: ${ev.payload}`
     case 'error':
       return `Error: ${ev.payload}`
     case 'done':
@@ -76,7 +76,7 @@ export default function Timeline({ events }: Props) {
         display: 'flex', justifyContent: 'space-between',
         position: 'sticky', top: 0, background: '#0d1220', zIndex: 1,
       }}>
-        <span>Events</span>
+        <span>Events <span style={{ fontWeight: 400, color: '#64748b', fontSize: 9 }}>— click for details</span></span>
         <span style={{ color: '#64748b' }}>{events.length}</span>
       </div>
 
