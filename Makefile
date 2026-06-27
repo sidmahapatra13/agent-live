@@ -1,17 +1,20 @@
 GO := /opt/homebrew/bin/go
 
-.PHONY: all build check dev clean deps
+.PHONY: all build check dev clean deps dashboard ci tscheck
 
 # Default target
 all: build
 
-# Install Node dependencies
+# Install Node dependencies (run once per clone / after package.json changes)
 deps:
 	cd dashboard && npm install
 
-# Build the Go binary with embedded dashboard
-build: deps
+# Build the Vite frontend
+dashboard:
 	cd dashboard && npx vite build
+
+# Build the Go binary (assumes dashboard/dist is up-to-date)
+build:
 	$(GO) build -o agent-live .
 
 # Run Go lint/check
@@ -23,7 +26,7 @@ tscheck:
 	cd dashboard && npx tsc --noEmit
 
 # Run in development mode
-dev: deps
+dev:
 	@echo "Starting dashboard dev server on :5173..."
 	cd dashboard && npx vite &
 	@echo "Run agent-live in another terminal:"
@@ -35,5 +38,5 @@ clean:
 	rm -f agent-live agent-live.exe agent-live-darwin agent-live-linux
 	$(GO) clean
 
-# Full CI check
-ci: deps tscheck check build
+# Full CI check (runs all stages in order)
+ci: deps tscheck dashboard check build

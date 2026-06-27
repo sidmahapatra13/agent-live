@@ -350,6 +350,19 @@ export default function GraphCanvas({ nodes, edges, agentPosition }: Props) {
 
   return (
     <div ref={containerRef} style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+      {nodes.length === 0 && (
+        <div style={{
+          position: 'absolute', inset: 0, zIndex: 1,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          flexDirection: 'column', gap: 10,
+          color: '#475569', fontSize: 13,
+          fontFamily: "'Inter', system-ui, sans-serif",
+          pointerEvents: 'none',
+        }}>
+          <span style={{ fontSize: 26, opacity: 0.3 }}>⚡</span>
+          <span>Waiting for agent events…</span>
+        </div>
+      )}
       <svg ref={svgRef} width="100%" height="100%" style={{ background: C.bg, display: 'block' }} />
     </div>
   )
