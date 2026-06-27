@@ -65,20 +65,18 @@ agent-live run -- <agent-command>
 
 - [x] Three architectural decisions locked (Go, D3-force, OpenCode-first)
 - [x] Project scaffolded: 19 files, Go module, React+Vite dashboard
-- [x] Go CLI: PTY wrapper (`main.go`), event types (`events.go`), OpenCode parser (`parser.go`), WebSocket hub (`hub.go`)
+- [x] Go CLI: PTY wrapper (`main.go`), event types (`events.go`), parser (`parser.go`), WebSocket hub (`hub.go`)
+- [x] Parser handles both OpenCode JSON events (`--format json`) and plain text regex fallback
 - [x] Dashboard: StatusBar, Timeline, GraphCanvas with D3-force simulation
 - [x] Dashboard build verified: `tsc --noEmit` clean, `vite build` produces dist/ (120 modules, 177KB JS)
 - [x] Go binary: builds, vets clean, starts HTTP server on :8080 serving dashboard
-- [x] Smoke test: `agent-live run -- echo "test"` → Dashboard at http://localhost:8080
+- [x] End-to-end: `agent-live run -- opencode run --format json "prompt"` captures real OpenCode events
 
 ## What's Not (MVP Roadmap)
 
-Phase 3 — OpenCode integration & tuning
-- [ ] Tune parser regex patterns against real OpenCode JSON output
-- [ ] End-to-end test with `agent-live run -- opencode "command"`
-- [ ] Handle OpenCode JSON events mode (`--format json`)
-- [ ] Dashboard polish: transitions, responsive layout, edge highlighting
-- [ ] README with demo GIF
+- [ ] Dashboard polish: edge highlighting, smoother transitions, responsive layout
+- [ ] README with demo GIF and setup instructions
+- [ ] Publish to GitHub
 
 ## Known Issues
 
