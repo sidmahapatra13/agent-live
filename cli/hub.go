@@ -9,16 +9,21 @@ import (
 )
 
 // Hub maintains a set of active WebSocket connections and broadcasts events.
+// It also keeps a rolling history of recent events for replay to new clients.
 type Hub struct {
 	mu       sync.RWMutex
 	clients  map[*websocket.Conn]bool
+	history  [][]byte // rolling buffer of recent events
 	upgrader websocket.Upgrader
 }
+
+const maxHistory = 500
 
 // NewHub creates a new WebSocket hub.
 func NewHub() *Hub {
 	return &Hub{
 		clients: make(map[*websocket.Conn]bool),
+		history: make([][]byte, 0, maxHistory),
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool {
 				return true // dev mode — tighten for prod
@@ -28,6 +33,7 @@ func NewHub() *Hub {
 }
 
 // HandleWS upgrades an HTTP connection to WebSocket.
+// On connect, replays all history events so the client sees the full session.
 func (h *Hub) HandleWS(w http.ResponseWriter, r *http.Request) {
 	conn, err := h.upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -37,9 +43,19 @@ func (h *Hub) HandleWS(w http.ResponseWriter, r *http.Request) {
 
 	h.mu.Lock()
 	h.clients[conn] = true
+	// Replay history to this new client
+	for _, event := range h.history {
+		if err := conn.WriteMessage(websocket.TextMessage, event); err != nil {
+			log.Printf("WS replay error: %v", err)
+			delete(h.clients, conn)
+			h.mu.Unlock()
+			conn.Close()
+			return
+		}
+	}
 	h.mu.Unlock()
 
-	log.Printf("WS client connected (%d total)", len(h.clients))
+	log.Printf("WS client connected (%d total, %d history events replayed)", len(h.clients), len(h.history))
 
 	defer func() {
 		h.mu.Lock()
@@ -57,11 +73,20 @@ func (h *Hub) HandleWS(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// Broadcast sends a JSON message to all connected clients.
+// Broadcast sends a JSON message to all connected clients
+// and appends it to the rolling history buffer.
 func (h *Hub) Broadcast(data []byte) {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
+	h.mu.Lock()
+	defer h.mu.Unlock()
 
+	// Store in history (rolling buffer)
+	if len(h.history) >= maxHistory {
+		h.history = append(h.history[1:], data)
+	} else {
+		h.history = append(h.history, data)
+	}
+
+	// Send to all connected clients
 	for conn := range h.clients {
 		if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
 			log.Printf("WS write error: %v", err)

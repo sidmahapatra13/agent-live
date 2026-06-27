@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -83,8 +84,12 @@ func main() {
 	// ── Parser ───────────────────────────────────────────
 	parser := newOpenCodeParser()
 
-	// Read PTY output in a goroutine, parse and broadcast
+	// doneCh is closed when the agent process finishes (PTY read loop ends)
 	doneCh := make(chan struct{})
+	var closeOnce sync.Once
+	safeClose := func() { closeOnce.Do(func() { close(doneCh) }) }
+
+	// Read PTY output in a goroutine, parse and broadcast
 	go func() {
 		buf := make([]byte, 4096)
 		for {
@@ -93,7 +98,7 @@ func main() {
 				if err != io.EOF {
 					log.Printf("PTY read error: %v", err)
 				}
-				close(doneCh)
+				safeClose()
 				return
 			}
 			if n == 0 {
@@ -121,10 +126,9 @@ func main() {
 		}
 	}()
 
-	// ── Wait for agent to finish ─────────────────────────
+	// Wait for agent to finish, then send done event
 	go func() {
 		_ = cmd.Wait()
-		// Send a done event
 		ts := time.Since(startTime).Seconds()
 		evt := Event{
 			Type:      EventDone,
@@ -135,21 +139,20 @@ func main() {
 		data, _ := json.Marshal(evt)
 		hub.Broadcast(data)
 		ptmx.Close()
+		safeClose()
 	}()
 
-	// ── Graceful shutdown ────────────────────────────────
+	// Wait for agent to finish, then keep server alive
+	<-doneCh
+	log.Printf("Agent finished — dashboard stays open at http://localhost:8080")
+	log.Println("Press Ctrl+C to stop the server.")
+
+	// Keep server alive until Ctrl+C
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	<-sigCh
 
-	select {
-	case <-sigCh:
-		log.Println("Shutting down...")
-		cmd.Process.Signal(syscall.SIGTERM)
-		<-doneCh
-	case <-doneCh:
-		// Agent finished naturally
-	}
-
+	log.Println("Shutting down...")
 	server.Close()
 	log.Println("Done.")
 }
