@@ -66,23 +66,25 @@ agent-live run -- <agent-command>
 - [x] Three architectural decisions locked (Go, D3-force, OpenCode-first)
 - [x] Project scaffolded: 19 files, Go module, React+Vite dashboard
 - [x] Go CLI: PTY wrapper (`main.go`), event types (`events.go`), OpenCode parser (`parser.go`), WebSocket hub (`hub.go`)
-- [x] Dashboard: StatusBar, Timeline, GraphCanvas stubs, WebSocket hook
-- [x] Dashboard build verified: `tsc --noEmit` clean, `vite build` produces dist/
+- [x] Dashboard: StatusBar, Timeline, GraphCanvas with D3-force simulation
+- [x] Dashboard build verified: `tsc --noEmit` clean, `vite build` produces dist/ (120 modules, 177KB JS)
 - [x] Go binary: builds, vets clean, starts HTTP server on :8080 serving dashboard
 - [x] Smoke test: `agent-live run -- echo "test"` → Dashboard at http://localhost:8080
 
 ## What's Not (MVP Roadmap)
 
-Phase 2 — Graph engine & dashboard polish
-- [ ] D3-force simulation with nodes, edges, agent particle animation
-- [ ] Live node/edge generation from parsed events
-- [ ] Dashboard polishing (layout, colors, transitions)
-
 Phase 3 — OpenCode integration & tuning
 - [ ] Tune parser regex patterns against real OpenCode JSON output
 - [ ] End-to-end test with `agent-live run -- opencode "command"`
 - [ ] Handle OpenCode JSON events mode (`--format json`)
+- [ ] Dashboard polish: transitions, responsive layout, edge highlighting
 - [ ] README with demo GIF
+
+## Known Issues
+
+- Agent particle starts at (100, 100) before first event positions it — minor cosmetic
+- Edge list capped at 1000 entries — graph shows last 800 edges
+- Node labels truncated at 22 chars — full path visible in timeline
 
 ## Open Questions
 
