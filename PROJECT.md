@@ -28,6 +28,7 @@ agent-live run -- <agent-command>
     │  • Output parser    │
     │  • WebSocket server │
     │  • Serves dashboard │
+    │    (embedded)       │
     └────────┬────────────┘
              │ ws:// + http://
              ▼
@@ -36,6 +37,7 @@ agent-live run -- <agent-command>
     │  • D3-force graph   │
     │  • Timeline feed    │
     │  • Status bar       │
+    │  • WS reconnect     │
     └─────────────────────┘
 ```
 
@@ -71,14 +73,40 @@ agent-live run -- <agent-command>
 - [x] Graph: edge hover highlighting, node tooltips, dot grid background, smooth enter/update transitions
 - [x] Dashboard build verified: `tsc --noEmit` clean, `vite build` produces dist/
 - [x] Go binary: builds, vets clean, starts HTTP server on :8080 serving dashboard
-- [x] End-to-end: `agent-live run -- opencode run --format json "prompt"` captures real events
+- [x] End-to-end: `agent-live run -- opencode "prompt"` captures real events
 - [x] README with architecture diagram, quick start, usage guides
+- [x] **Embedded frontend** in Go binary via `go:embed` — single-file distribution
+- [x] **CLI flags** — `--port`, `--help`, `--version`
+- [x] **WebSocket reconnection** — exponential backoff (1s–30s) with jitter
+- [x] **Go module at project root** — no more `cli/` subdirectory module
+
+### Fixes applied (2026-06-27)
+
+- [x] **d3-transition import**: Added `import 'd3-transition'` in GraphCanvas.tsx
+- [x] **`__agent__` pseudo-node**: Agent node in simulation's node list
+- [x] **Debug red circle removed**: Test marker at line 169 of GraphCanvas.tsx deleted
+- [x] **Timer uses server elapsed**: StatusBar now receives `elapsed` prop
+- [x] **ANSI stripping**: Added `stripAnsi()` using regex
+- [x] **OpenCode regex patterns corrected**: Real OpenCode patterns
+- [x] **Regex anchor removed**: No `^` anchor on → patterns
+- [x] **Thought threshold lowered**: From `len(line) > 20` to `> 5`
+- [x] **PTY buffer flush on EOF**: Final line not lost
+- [x] **PTY drain delay**: 100ms sleep before ptmx.Close()
+- [x] **Debug logging cleaned up**: All debug statements removed
+- [x] **Edge key function fixed**: Handles string refs properly
+- [x] **Auto-open removed**: User opens dashboard manually
+- [x] **Embedded dashboard**: Single binary distribution
+- [x] **WS reconnection**: Exponential backoff with jitter
+- [x] **Go module at root**: Cleaner project structure
 
 ## What's Not (MVP Roadmap)
 
 - [ ] Dashboard polish: edge highlighting, smoother transitions, responsive layout
 - [ ] README with demo GIF and setup instructions
 - [ ] Publish to GitHub
+- [ ] Claude Code and Codex adapters
+- [ ] Session recording and replay
+- [ ] Tighten `CheckOrigin` for production
 
 ## Known Issues
 
@@ -90,7 +118,8 @@ agent-live run -- <agent-command>
 
 - Force simulation parameters for the graph (repulsion, link distance, charge strength) — will tune after seeing real agent data.
 - Should the dashboard auto-refresh from a recorded session replay, or only live? (MVP: live only.)
-- OpenCode JSON events format (`opencode run --format json`) outputs structured events — should the parser prefer this over regex? Its structured data would be more reliable.
+- **Live event streaming reliability:** PTY data arrives in chunks that may split ANSI codes across reads. Current `stripAnsi` + `TrimSpace` handles this, but edge cases with very fast output may still lose events. Consider a more robust line assembly strategy in v0.2.
+- **Agent detection:** Parser currently hardcodes OpenCode patterns. Need a way to auto-detect or configure which agent adapter to use (OpenCode vs Claude Code vs Codex).
 
 ## Agent-live project conventions
 

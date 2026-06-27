@@ -5,18 +5,22 @@ GO := /opt/homebrew/bin/go
 # Default target
 all: build
 
-# Install dependencies
+# Install Node dependencies
 deps:
 	cd dashboard && npm install
 
-# Build the Go binary
+# Build the Go binary with embedded dashboard
 build: deps
 	cd dashboard && npx vite build
-	cd cli && $(GO) build -o ../agent-live .
+	$(GO) build -o agent-live .
 
 # Run Go lint/check
 check:
-	cd cli && $(GO) vet ./...
+	$(GO) vet ./...
+
+# Run TypeScript checks
+tscheck:
+	cd dashboard && npx tsc --noEmit
 
 # Run in development mode
 dev: deps
@@ -28,5 +32,8 @@ dev: deps
 # Clean build artifacts
 clean:
 	rm -rf dashboard/dist
-	rm -f agent-live agent-live.exe
-	cd cli && $(GO) clean
+	rm -f agent-live agent-live.exe agent-live-darwin agent-live-linux
+	$(GO) clean
+
+# Full CI check
+ci: deps tscheck check build

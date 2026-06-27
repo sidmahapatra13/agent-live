@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import GraphCanvas, { NodeDef, EdgeDef } from './Graph/GraphCanvas'
 import Timeline from './Timeline/Timeline'
 import StatusBar from './StatusBar/StatusBar'
@@ -25,10 +25,104 @@ function shortLabel(kind: string, payload: string): string {
   return payload
 }
 
-export default function App() {
+const RECONNECT_BASE = 1000    // 1 second
+const RECONNECT_MAX = 30000    // 30 seconds
+const RECONNECT_JITTER = 0.3   // ±30% jitter
+
+function nextReconnectDelay(attempt: number): number {
+  const exponential = RECONNECT_BASE * Math.pow(2, attempt)
+  const clamped = Math.min(exponential, RECONNECT_MAX)
+  const jitter = 1 + (Math.random() - 0.5) * 2 * RECONNECT_JITTER
+  return Math.round(clamped * jitter)
+}
+
+function useWebSocket(url: string) {
   const [connected, setConnected] = useState(false)
+  const [reconnecting, setReconnecting] = useState(false)
   const [events, setEvents] = useState<Event[]>([])
   const wsRef = useRef<WebSocket | null>(null)
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const reconnectAttemptRef = useRef(0)
+  const mountedRef = useRef(true)
+  const onEventRef = useRef<((ev: Event) => void) | null>(null)
+
+  const connect = useCallback(() => {
+    if (!mountedRef.current) return
+    if (wsRef.current?.readyState === WebSocket.OPEN) return
+
+    const ws = new WebSocket(url)
+    wsRef.current = ws
+
+    ws.onopen = () => {
+      if (!mountedRef.current) { ws.close(); return }
+      setConnected(true)
+      setReconnecting(false)
+      reconnectAttemptRef.current = 0
+    }
+
+    ws.onclose = () => {
+      if (!mountedRef.current) return
+      setConnected(false)
+      scheduleReconnect()
+    }
+
+    ws.onerror = () => {
+      // onclose will fire after onerror, so we just let it close
+    }
+
+    ws.onmessage = (msg) => {
+      try {
+        const event = JSON.parse(msg.data) as Event
+        setEvents((prev) => [...prev.slice(-500), event])
+        onEventRef.current?.(event)
+      } catch {
+        // ignore malformed
+      }
+    }
+  }, [url])
+
+  const scheduleReconnect = useCallback(() => {
+    if (!mountedRef.current) return
+    const attempt = reconnectAttemptRef.current
+    const delay = nextReconnectDelay(attempt)
+    reconnectAttemptRef.current = attempt + 1
+    setReconnecting(true)
+
+    reconnectTimerRef.current = setTimeout(() => {
+      if (mountedRef.current) connect()
+    }, delay)
+  }, [connect])
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false
+      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
+      wsRef.current?.close()
+    }
+  }, [])
+
+  return {
+    connected,
+    reconnecting,
+    events,
+    connect,
+    onEventRef,
+  }
+}
+
+export default function App() {
+  const wsUrl = useMemo(() => {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    return `${protocol}//${window.location.host}/ws`
+  }, [])
+
+  const { connected, reconnecting, events, connect, onEventRef } = useWebSocket(wsUrl)
+
+  // Connect on mount
+  useEffect(() => {
+    connect()
+  }, [connect])
 
   // Track graph state via refs (avoids re-render cascades)
   const nodeMapRef = useRef<Map<string, NodeDef>>(new Map())
@@ -132,30 +226,10 @@ export default function App() {
     setGraphTick((t) => t + 1)
   })
 
-  // ── WebSocket connection ────────────────────────────
-  useEffect(() => {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const wsUrl = `${protocol}//${window.location.host}/ws`
-    const ws = new WebSocket(wsUrl)
-    wsRef.current = ws
-
-    ws.onopen = () => setConnected(true)
-    ws.onclose = () => setConnected(false)
-    ws.onerror = () => setConnected(false)
-
-    ws.onmessage = (msg) => {
-      try {
-        const event = JSON.parse(msg.data) as Event
-        console.log('[App] Event:', event.type, event.payload.slice(0, 60))
-        setEvents((prev) => [...prev.slice(-500), event])
-        processEvent.current(event)
-      } catch {
-        // ignore malformed
-      }
-    }
-
-    return () => ws.close()
-  }, [])
+  // Wire the event handler ref
+  onEventRef.current = (event: Event) => {
+    processEvent.current(event)
+  }
 
   // Memoize graph data for the canvas
   const graphData = useMemo(() => ({
@@ -168,7 +242,7 @@ export default function App() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
-      <StatusBar connected={connected} {...stats} />
+      <StatusBar connected={connected} reconnecting={reconnecting} {...stats} />
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
         <GraphCanvas
           nodes={graphData.nodes}

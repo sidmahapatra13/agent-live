@@ -6,6 +6,14 @@ import (
 	"strings"
 )
 
+// ansiEscapeRe matches ANSI escape sequences (SGR codes, etc.)
+var ansiEscapeRe = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+
+// stripAnsi removes ANSI escape codes from a string.
+func stripAnsi(s string) string {
+	return ansiEscapeRe.ReplaceAllString(s, "")
+}
+
 // ParsedLine is one parsed event from a line of agent output.
 type ParsedLine struct {
 	EventType string
@@ -47,6 +55,8 @@ type openCodeParser struct {
 	fileReadRe  *regexp.Regexp
 	fileWriteRe *regexp.Regexp
 	cmdRunRe    *regexp.Regexp
+	globRe      *regexp.Regexp
+	grepRe      *regexp.Regexp
 	planStepRe  *regexp.Regexp
 	doneRe      *regexp.Regexp
 	buffer      string
@@ -54,9 +64,11 @@ type openCodeParser struct {
 
 func newOpenCodeParser() *openCodeParser {
 	return &openCodeParser{
-		fileReadRe:  regexp.MustCompile(`(?i)reading\s+(?:file|content):?\s*(.+)`),
-		fileWriteRe: regexp.MustCompile(`(?i)(?:writing|creating|saving|editing)\s+(?:file|to)?:?\s*(.+)`),
-		cmdRunRe:    regexp.MustCompile(`(?i)(?:running|executing|run)\s+(?:command|cmd|shell)?:?\s*(.+)`),
+		fileReadRe:  regexp.MustCompile(`(?i)→\s+(?:Read|Cat)\s+(.+)`),
+		fileWriteRe: regexp.MustCompile(`(?i)→\s+(?:Write|Edit|Create)\s+(.+)`),
+		cmdRunRe:    regexp.MustCompile(`(?i)→\s+(?:Bash|Shell|Command|Run)\s+(.+)`),
+		globRe:      regexp.MustCompile(`(?i)✱\s+Glob\s+(.+?)\s+\d+\s+match`),
+		grepRe:      regexp.MustCompile(`(?i)✱\s+Grep\s+(.+)`),
 		planStepRe:  regexp.MustCompile(`(?i)(?:step\s+\d+:|##\s+step)\s*(.+)`),
 		doneRe:      regexp.MustCompile(`(?i)^(?:done|complete|finished|successfully)`),
 	}
@@ -76,18 +88,34 @@ func (p *openCodeParser) Feed(chunk string) []ParsedLine {
 
 	var result []ParsedLine
 	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" {
-			continue
-		}
-		if pl := p.parseLine(trimmed); pl != nil {
+		if pl := p.parseLine(line); pl != nil {
 			result = append(result, *pl)
 		}
 	}
 	return result
 }
 
+// Flush processes any remaining buffered data as a final line.
+// Call this when the PTY closes (EOF) to avoid losing the last line.
+func (p *openCodeParser) Flush() *ParsedLine {
+	if p.buffer == "" {
+		return nil
+	}
+	trimmed := strings.TrimSpace(stripAnsi(p.buffer))
+	p.buffer = ""
+	if trimmed == "" {
+		return nil
+	}
+	return p.parseLine(trimmed)
+}
+
 func (p *openCodeParser) parseLine(line string) *ParsedLine {
+	// Strip ANSI escape codes and trim whitespace
+	line = strings.TrimSpace(stripAnsi(line))
+	if line == "" {
+		return nil
+	}
+
 	// First, try JSON — OpenCode outputs JSON events with --format json
 	if pl := p.parseJSON(line); pl != nil {
 		if pl.EventType == "__skip__" {
@@ -102,7 +130,7 @@ func (p *openCodeParser) parseLine(line string) *ParsedLine {
 	}
 
 	// Unmatched substantive lines become thought events
-	if len(line) > 20 {
+	if len(line) > 5 {
 		return &ParsedLine{EventType: "thought", Payload: line}
 	}
 	return nil
@@ -212,6 +240,18 @@ func (p *openCodeParser) parseRegex(line string) *ParsedLine {
 		}
 		return &ParsedLine{EventType: "command", Payload: line}
 
+	case p.globRe.MatchString(line):
+		matches := p.globRe.FindStringSubmatch(line)
+		if len(matches) >= 2 {
+			return &ParsedLine{EventType: "file_read", Payload: "glob: " + strings.TrimSpace(matches[1])}
+		}
+
+	case p.grepRe.MatchString(line):
+		matches := p.grepRe.FindStringSubmatch(line)
+		if len(matches) >= 2 {
+			return &ParsedLine{EventType: "file_read", Payload: "grep: " + strings.TrimSpace(matches[1])}
+		}
+
 	case p.planStepRe.MatchString(line):
 		matches := p.planStepRe.FindStringSubmatch(line)
 		if len(matches) >= 2 {
@@ -225,4 +265,5 @@ func (p *openCodeParser) parseRegex(line string) *ParsedLine {
 	default:
 		return nil
 	}
+	return nil
 }

@@ -14,7 +14,7 @@ Agent-live wraps any AI coding agent (OpenCode, Claude Code, Codex) in a pseudo-
 agent-live run -- opencode "refactor the auth module"
 ```
 
-→ Browser opens → **Live graph** of files read/written, **timeline** of every action, **status bar** with counters and elapsed time.
+→ Open http://localhost:8080 → **Live graph** of files read/written, **timeline** of every action, **status bar** with counters and elapsed time.
 
 ---
 
@@ -24,7 +24,7 @@ agent-live run -- opencode "refactor the auth module"
 - **Event timeline** — Scrollable feed of every action with colour-coded icons and timestamps.
 - **Status dashboard** — Connection status, live elapsed timer, file read/write counts, command counter.
 - **Agent-agnostic** — Works with OpenCode, Claude Code, Codex, or any CLI agent. Just wrap it.
-- **Single binary** — Built with Go, serve the dashboard from one file (embedded frontend planned).
+- **Single binary** — Frontend is embedded in the Go binary. No runtime dependencies.
 - **Zero config** — Run `agent-live run -- <your-agent> "prompt"` and go.
 
 ---
@@ -45,7 +45,7 @@ cd agent-live
 make build
 ```
 
-This installs Node dependencies, builds the dashboard, and compiles the Go binary.
+This installs Node dependencies, builds the dashboard, and compiles the Go binary with the frontend embedded.
 
 ### Run
 
@@ -60,7 +60,15 @@ Or with any other agent:
 ./agent-live run -- codex "refactor the main function"
 ```
 
-Your browser opens to `http://localhost:8080` showing the live dashboard.
+Open [http://localhost:8080](http://localhost:8080) in your browser to see the live dashboard.
+
+### Options
+
+```bash
+agent-live --port 9090 run -- opencode "prompt"    # Custom port
+agent-live -help                                     # Show usage
+agent-live -version                                  # Show version
+```
 
 ---
 
@@ -124,8 +132,8 @@ agent-live run -- opencode run --format json --model opencode/deepseek-v4-flash 
 # Run with any CLI agent (regex fallback mode)
 agent-live run -- claude "write a README"
 
-# Run with Codex
-agent-live run -- codex "refactor the auth module"
+# Run on a different port
+agent-live --port 9090 run -- opencode "explain this repo"
 ```
 
 ### OpenCode Server Mode
@@ -149,20 +157,20 @@ The JSON format gives agent-live structured file read/write events, command exec
 
 ```
 agent-live/
-├── cli/                    # Go CLI and server
-│   ├── main.go            # Entry point, PTY wrapper, HTTP server
-│   ├── parser.go          # JSON + regex agent output parser
-│   ├── events.go          # Event type definitions
-│   └── hub.go             # WebSocket broadcast hub
-├── dashboard/             # React frontend
+├── main.go              # Entry point, PTY wrapper, HTTP server
+├── parser.go            # JSON + regex agent output parser
+├── events.go            # Event type definitions
+├── hub.go               # WebSocket broadcast hub
+├── dashboard/           # React frontend
 │   └── src/
-│       ├── App.tsx        # Main app, WebSocket, event→graph wiring
-│       ├── Graph/         # D3-force knowledge graph
-│       ├── Timeline/      # Event feed
-│       └── StatusBar/     # Connection light, counters, timer
-├── Makefile               # build/check/dev/clean targets
-├── agent-live             # Compiled binary (after make build)
-└── PROJECT.md             # Project state and roadmap
+│       ├── App.tsx      # Main app, WebSocket (with reconnect), event→graph wiring
+│       ├── Graph/       # D3-force knowledge graph
+│       ├── Timeline/    # Event feed
+│       └── StatusBar/   # Connection light, counters, timer
+├── Makefile             # build/check/dev/clean targets
+├── agent-live           # Compiled binary (after make build, gitignored)
+├── PROJECT.md           # Project state and roadmap
+└── DECISIONS.md         # Architecture decision log
 ```
 
 ---
@@ -170,16 +178,22 @@ agent-live/
 ## Development
 
 ```bash
-# Full build
+# Full build (npm install → vite build → go build)
 make build
 
 # Run Go checks
 make check
 
+# TypeScript checks
+make tscheck
+
+# CI pipeline (lint + typecheck + build)
+make ci
+
 # Dev mode (separate terminals)
 make deps
 cd dashboard && npx vite        # Terminal 1: Vite dev server :5173
-./agent-live run -- opencode ...  # Terminal 2: agent-live (proxy to :5173)
+./agent-live run -- opencode ...  # Terminal 2: agent-live
 ```
 
 ---
@@ -190,10 +204,13 @@ cd dashboard && npx vite        # Terminal 1: Vite dev server :5173
 - [x] OpenCode JSON event parser
 - [x] Live D3-force knowledge graph
 - [x] Event timeline and status bar
-- [ ] Embedded frontend in Go binary (single-file distribution)
+- [x] Embedded frontend in Go binary (single-file distribution)
+- [x] WebSocket reconnection with exponential backoff
+- [x] CLI flags (--port, --help, --version)
 - [ ] Claude Code and Codex adapters
 - [ ] Session recording and replay
 - [ ] Dark theme polish and themes
+- [ ] Published to GitHub
 
 ---
 

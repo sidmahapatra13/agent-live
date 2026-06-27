@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react'
 import * as d3Force from 'd3-force'
 import { select } from 'd3-selection'
+import 'd3-transition' // registers .transition() on d3-selection
 
 // ── Types ────────────────────────────────────────────────
 
@@ -67,10 +68,6 @@ export default function GraphCanvas({ nodes, edges, agentPosition }: Props) {
   // Agent particle animation state
   const agentPos = useRef({ x: 100, y: 100 })
   const agentTarget = useRef({ x: 100, y: 100 })
-
-  // Log initial mount
-  console.log('[GraphCanvas] Mounted')
-  console.log('[GraphCanvas] Initial nodes:', nodes.length, 'edges:', edges.length)
 
   // ── Initialize SVG DOM and force simulation ──────────
   useEffect(() => {
@@ -164,9 +161,6 @@ export default function GraphCanvas({ nodes, edges, agentPosition }: Props) {
       .force('center', d3Force.forceCenter(widthRef.current / 2, heightRef.current / 2))
       .force('collision', d3Force.forceCollide().radius(25))
       .alphaDecay(0.02)
-
-    // TEST: Render a fixed circle to verify SVG pipeline is working
-    svg.append('circle').attr('cx', 400).attr('cy', 300).attr('r', 10).attr('fill', '#f00')
 
     simRef.current = sim
 
@@ -303,6 +297,21 @@ export default function GraphCanvas({ nodes, edges, agentPosition }: Props) {
         index: 0,
       }
     })
+
+    // Add fixed agent node so link force can resolve __agent__ references
+    const agentNodeId = '__agent__'
+    if (updatedNodes.length > 0 && !updatedNodes.find((n) => n.id === agentNodeId)) {
+      updatedNodes.unshift({
+        id: agentNodeId,
+        label: 'Agent',
+        kind: 'command' as const,
+        event_type: 'command',
+        x: widthRef.current / 2,
+        y: heightRef.current / 2,
+        fx: widthRef.current / 2,
+        fy: heightRef.current / 2,
+      } as SimNode)
+    }
 
     const updatedLinks: SimLink[] = edges.map((e) => ({
       source: e.source,

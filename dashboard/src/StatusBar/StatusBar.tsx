@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react'
 
 type Props = {
   connected: boolean
+  reconnecting: boolean
   filesRead: number
   filesWritten: number
   commands: number
@@ -10,6 +11,7 @@ type Props = {
 }
 
 function formatTime(seconds: number): string {
+  if (seconds < 1) return '<1s'
   const m = Math.floor(seconds / 60)
   const s = Math.floor(seconds % 60)
   return `${m}:${s.toString().padStart(2, '0')}`
@@ -17,9 +19,11 @@ function formatTime(seconds: number): string {
 
 export default function StatusBar({
   connected,
+  reconnecting,
   filesRead,
   filesWritten,
   commands,
+  elapsed,
   status,
 }: Props) {
   const [displayTime, setDisplayTime] = useState('0:00')
@@ -31,6 +35,8 @@ export default function StatusBar({
       startRef.current = Date.now()
     }
     if (status === 'done') {
+      // Show final elapsed from server timestamps when done
+      setDisplayTime(formatTime(elapsed))
       startRef.current = null
     }
 
@@ -42,7 +48,7 @@ export default function StatusBar({
     }, 500)
 
     return () => clearInterval(interval)
-  }, [isRunning, status])
+  }, [isRunning, status, elapsed])
 
   return (
     <div
@@ -83,6 +89,12 @@ export default function StatusBar({
           {connected ? 'LIVE' : 'OFF'}
         </span>
       </span>
+
+      {reconnecting && (
+        <span style={{ color: '#f59e0b', fontStyle: 'italic' }}>
+          Reconnecting…
+        </span>
+      )}
 
       <span style={{ color: '#334155' }}>|</span>
 

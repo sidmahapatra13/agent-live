@@ -1,9 +1,12 @@
 package main
 
 import (
+	"embed"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -16,27 +19,50 @@ import (
 	"github.com/creack/pty"
 )
 
-func main() {
-	log.SetFlags(0)
-	log.SetPrefix("agent-live: ")
+//go:embed dashboard/dist/*
+var dashboardFS embed.FS
 
-	if len(os.Args) < 3 || os.Args[1] != "run" {
-		fmt.Fprintf(os.Stderr, "Usage: agent-live run -- <agent-command> [args...]\n")
-		fmt.Fprintf(os.Stderr, "Example: agent-live run -- opencode \"explain this repo\"\n")
+const version = "0.1.0"
+
+func main() {
+	// ── CLI flags ────────────────────────────────────────
+	port := flag.Int("port", 8080, "HTTP server port")
+	showVersion := flag.Bool("version", false, "Show version and exit")
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Agent-live v%s — Watch your AI coding agent in real time.\n\n", version)
+		fmt.Fprintf(os.Stderr, "Usage:\n")
+		fmt.Fprintf(os.Stderr, "  agent-live [flags] run -- <agent-command> [args...]\n\n")
+		fmt.Fprintf(os.Stderr, "Flags:\n")
+		flag.PrintDefaults()
+		fmt.Fprintf(os.Stderr, "\nExamples:\n")
+		fmt.Fprintf(os.Stderr, "  agent-live run -- opencode \"explain this repo\"\n")
+		fmt.Fprintf(os.Stderr, "  agent-live --port 9090 run -- claude \"write tests\"\n")
+	}
+	flag.Parse()
+
+	if *showVersion {
+		fmt.Printf("agent-live v%s\n", version)
+		return
+	}
+
+	args := flag.Args()
+	if len(args) < 2 || args[0] != "run" {
+		flag.Usage()
 		os.Exit(1)
 	}
 
 	// agent command is everything after "run" (optional "--" separator)
-	args := os.Args[2:]
-	if len(args) > 0 && args[0] == "--" {
-		args = args[1:]
+	cmdArgs := args[1:]
+	if len(cmdArgs) > 0 && cmdArgs[0] == "--" {
+		cmdArgs = cmdArgs[1:]
 	}
-	if len(args) == 0 {
-		log.Fatal("No agent command specified.")
+	if len(cmdArgs) == 0 {
+		flag.Usage()
+		os.Exit(1)
 	}
 
-	cmdName := args[0]
-	cmdArgs := args[1:]
+	cmdName := cmdArgs[0]
+	cmdArgs = cmdArgs[1:]
 
 	// ── Hub ──────────────────────────────────────────────
 	hub := NewHub()
@@ -47,24 +73,25 @@ func main() {
 	// WebSocket endpoint
 	mux.HandleFunc("/ws", hub.HandleWS)
 
-	// Static files — serve the built dashboard
-	distDir := "./dashboard/dist"
-	mux.Handle("/", http.FileServer(http.Dir(distDir)))
+	// Static files — serve from embedded dashboard
+	distFS, err := fs.Sub(dashboardFS, "dashboard/dist")
+	if err != nil {
+		log.Fatalf("Failed to load embedded dashboard: %v", err)
+	}
+	mux.Handle("/", http.FileServer(http.FS(distFS)))
 
+	addr := fmt.Sprintf(":%d", *port)
 	server := &http.Server{
-		Addr:    ":8080",
+		Addr:    addr,
 		Handler: mux,
 	}
 
 	go func() {
-		log.Printf("Dashboard at http://localhost:8080")
+		log.Printf("Dashboard at http://localhost%s", addr)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("HTTP server error: %v", err)
 		}
 	}()
-
-	// ── Open browser ─────────────────────────────────────
-	// Note: removed auto-open. User opens http://localhost:8080 manually.
 
 	// ── Session state ────────────────────────────────────
 	sessionID := fmt.Sprintf("%x", time.Now().UnixNano())
@@ -98,6 +125,19 @@ func main() {
 				if err != io.EOF {
 					log.Printf("PTY read error: %v", err)
 				}
+				// Flush any remaining buffered data as a final event
+				if pl := parser.Flush(); pl != nil {
+					ts := time.Since(startTime).Seconds()
+					evt := Event{
+						Type:      EventType(pl.EventType),
+						Timestamp: ts,
+						Payload:   pl.Payload,
+						SessionID: sessionID,
+					}
+					if data, err := json.Marshal(evt); err == nil {
+						hub.Broadcast(data)
+					}
+				}
 				safeClose()
 				return
 			}
@@ -126,9 +166,13 @@ func main() {
 		}
 	}()
 
-	// Wait for agent to finish, then send done event
+	// Wait for agent to finish, then send done event and close PTY
 	go func() {
 		_ = cmd.Wait()
+		// Give the PTY read loop time to drain remaining data
+		// before closing the PTY (which discards unread buffer)
+		time.Sleep(100 * time.Millisecond)
+		ptmx.Close()
 		ts := time.Since(startTime).Seconds()
 		evt := Event{
 			Type:      EventDone,
@@ -138,13 +182,12 @@ func main() {
 		}
 		data, _ := json.Marshal(evt)
 		hub.Broadcast(data)
-		ptmx.Close()
 		safeClose()
 	}()
 
 	// Wait for agent to finish, then keep server alive
 	<-doneCh
-	log.Printf("Agent finished — dashboard stays open at http://localhost:8080")
+	log.Printf("Agent finished — dashboard stays open at http://localhost%s", addr)
 	log.Println("Press Ctrl+C to stop the server.")
 
 	// Keep server alive until Ctrl+C
