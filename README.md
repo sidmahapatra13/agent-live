@@ -16,6 +16,8 @@ agent-live run -- opencode "refactor the auth module"
 
 → Open http://localhost:8080 → **Live graph** of files read/written, **timeline** of every action, **status bar** with counters and elapsed time.
 
+![Agent-live dashboard](dashboard-screenshot.png)
+
 ---
 
 ## Features
