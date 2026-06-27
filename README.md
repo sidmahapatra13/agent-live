@@ -207,22 +207,6 @@ cd dashboard && npx vite        # Terminal 1: Vite dev server :5173
 
 ---
 
-## Roadmap
-
-- [x] PTY wrapper for any agent
-- [x] OpenCode JSON event parser
-- [x] Live D3-force knowledge graph
-- [x] Event timeline and status bar
-- [x] Embedded frontend in Go binary (single-file distribution)
-- [x] WebSocket reconnection with exponential backoff
-- [x] CLI flags (--port, --help, --version)
-- [ ] Claude Code and Codex adapters
-- [ ] Session recording and replay
-- [ ] Dark theme polish and themes
-- [ ] Published to GitHub
-
----
-
 ## License
 
 MIT
