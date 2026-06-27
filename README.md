@@ -177,9 +177,7 @@ agent-live/
 │       ├── Timeline/    # Event feed
 │       └── StatusBar/   # Connection light, counters, timer
 ├── Makefile             # build/check/dev/clean targets
-├── agent-live           # Compiled binary (after make build, gitignored)
-├── PROJECT.md           # Project state and roadmap
-└── DECISIONS.md         # Architecture decision log
+└── agent-live           # Compiled binary (after make build, gitignored)
 ```
 
 ---
