@@ -1,211 +1,166 @@
 # Agent-live
 
-**Watch your AI coding agent work — in real time, from a live dashboard.**
+**Live observability for AI coding agents.**
 
+[![CI](https://github.com/sidmahapatra13/agent-live/actions/workflows/ci.yml/badge.svg)](https://github.com/sidmahapatra13/agent-live/actions/workflows/ci.yml)
 [![Go](https://img.shields.io/badge/Go-1.26+-00ADD8?logo=go)](https://go.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.5+-3178C6?logo=typescript)](https://www.typescriptlang.org/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
----
+Agent-live wraps a coding-agent CLI in a pseudo-terminal, normalizes its output into structured events, and streams those events to a browser dashboard in real time. It is meant for the moment when an agent is working and you want to see what it is touching, what it is running, and how the session is unfolding.
 
-Agent-live wraps any AI coding agent (OpenCode, Claude Code, Codex) in a pseudo-terminal, parses its output into structured events, and opens a browser dashboard showing exactly what the agent is doing — **as it happens**.
-
-```
+```bash
 agent-live run -- opencode "refactor the auth module"
 ```
 
-→ Open http://localhost:8080 → **Live graph** of files read/written, **timeline** of every action, **status bar** with counters and elapsed time.
+Open [http://localhost:8080](http://localhost:8080) to watch the graph, timeline, counters, and live connection state update as the agent works.
 
 ![Agent-live dashboard](dashboard-screenshot.png)
 
----
+## Why It Stands Out
 
-## Features
-
-- **Live knowledge graph** — D3-force simulation visualises files, commands, and thoughts as connected nodes. Watch the graph grow as your agent works.
-- **Event timeline** — Scrollable feed of every action with colour-coded icons and timestamps.
-- **Status dashboard** — Connection status, live elapsed timer, file read/write counts, command counter.
-- **Agent-agnostic** — Works with OpenCode, Claude Code, Codex, or any CLI agent. Just wrap it.
-- **Single binary** — Frontend is embedded in the Go binary. No runtime dependencies.
-- **Zero config** — Run `agent-live run -- <your-agent> "prompt"` and go.
-
----
+- **Live knowledge graph**: files, commands, and agent output become connected D3 nodes as the session runs.
+- **Timeline you can scan**: every parsed action is shown with timestamps, icons, and expandable details.
+- **Agent-agnostic wrapper**: OpenCode JSON output gets the richest events; Claude Code, Codex, and other CLIs still work through text parsing.
+- **Single binary**: the React dashboard is embedded into the Go executable.
+- **Local by default**: the dashboard binds to `127.0.0.1` unless you opt into another host.
+- **Small, readable codebase**: Go handles the PTY, parser, WebSocket hub, and static serving; React owns the visual dashboard.
 
 ## Quick Start
 
 ### Prerequisites
 
-- Go 1.26+ (for building from source)
-- Node.js 20+ (for building the dashboard)
-- An AI coding agent (e.g., [OpenCode](https://github.com/anomalyco/opencode))
+- Go 1.26+
+- Node.js 20+
+- A coding agent CLI such as OpenCode, Claude Code, or Codex
 
 ### Build
 
 ```bash
-git clone https://github.com/yourusername/agent-live.git
+git clone https://github.com/sidmahapatra13/agent-live.git
 cd agent-live
 make build
 ```
-
-This installs Node dependencies, builds the dashboard, and compiles the Go binary with the frontend embedded.
 
 ### Run
 
 ```bash
 ./agent-live run -- opencode "explain this codebase"
+./agent-live run -- claude "write parser tests"
+./agent-live run -- codex "review this repo"
 ```
 
-Or with any other agent:
+Then open [http://localhost:8080](http://localhost:8080).
+
+## OpenCode JSON Mode
+
+Agent-live first tries to parse each line as structured OpenCode JSON, then falls back to regex parsing for plain text output.
 
 ```bash
-./agent-live run -- claude "write unit tests for the parser"
-./agent-live run -- codex "refactor the main function"
+./agent-live run -- opencode run --format json "summarize this project"
 ```
 
-Open [http://localhost:8080](http://localhost:8080) in your browser to see the live dashboard.
-
-### Options
+For richer OpenCode sessions, attach to an OpenCode server:
 
 ```bash
-agent-live -host 127.0.0.1 -port 9090 run -- opencode "prompt"     # Custom host & port (default: 127.0.0.1:8080)
-agent-live -host 0.0.0.0                                            # Listen on all interfaces
-agent-live -origin https://myapp.com run -- ...                     # Restrict WS origin
-agent-live -help                                                    # Show usage
-agent-live -version                                                 # Show version
+opencode serve --port 4096
+
+./agent-live run -- opencode run \
+  --attach http://localhost:4096 \
+  --format json \
+  "add tests for the parser"
 ```
 
----
+## CLI
+
+```bash
+agent-live [flags] run -- <agent-command> [args...]
+```
+
+Useful flags:
+
+```bash
+-host 127.0.0.1       # HTTP host, defaults to local-only
+-port 9090            # HTTP port, defaults to 8080
+-origin URL           # restrict WebSocket origin
+-history-size 500     # events replayed to newly connected dashboard clients
+-max-nodes 500        # graph node cap
+-max-edges 1000       # graph edge cap
+-exit-when-done       # stop server when wrapped agent exits
+-version              # print version
+```
 
 ## How It Works
 
-```
-agent-live run -- opencode "prompt"
-         │
-         ▼
-    ┌─────────────────────────────────────┐
-    │ PTY Wrapper (Go)                    │
-    │  • Spawns agent in a pseudo-terminal│
-    │  • Captures all output in real time │
-    └────────────┬────────────────────────┘
-                 │ raw output
-                 ▼
-    ┌─────────────────────────────────────┐
-    │ Parser                              │
-    │  • JSON mode: reads OpenCode's      │
-    │    structured JSON event stream     │
-    │  • Regex fallback: pattern-matches  │
-    │    plain text agent output          │
-    └────────────┬────────────────────────┘
-                 │ structured events
-                 ▼
-    ┌─────────────────────────────────────┐
-    │ WebSocket Hub (Go)                  │
-    │  • Broadcasts events to all clients │
-    │  • Runs alongside HTTP server :8080 │
-    └────────────┬────────────────────────┘
-                 │ ws://localhost:8080
-                 ▼
-    ┌─────────────────────────────────────┐
-    │ Browser Dashboard (React + Vite)    │
-    │  • D3-force knowledge graph         │
-    │  • Timeline feed with icons         │
-    │  • Status bar with live counters    │
-    └─────────────────────────────────────┘
+```text
+agent-live run -- <agent> "prompt"
+        |
+        v
+PTY wrapper captures the agent process
+        |
+        v
+Parser normalizes JSON or text output into events
+        |
+        v
+WebSocket hub broadcasts events and replays recent history
+        |
+        v
+React dashboard renders graph, timeline, and counters
 ```
 
-### Event Types
+Event types:
 
-| Event | Icon | What it means | Graph colour |
-|-------|------|---------------|--------------|
-| `file_read` | 📖 | Agent read a file | Blue `#3b82f6` |
-| `file_write` | ✏️ | Agent wrote/edited a file | Green `#22c55e` |
-| `command` | ⚡ | Agent ran a shell command | Yellow `#eab308` |
-| `thought` | 💭 | Agent reasoning or output | Purple `#a855f7` |
-| `plan_step` | 🎯 | Agent declared a planning step | Cyan `#06b6d4` |
-
----
-
-### Usage
-
-Agent-live supports two event capture modes:
-
-**Recommended — JSON mode (OpenCode only):**
-
-```bash
-# OpenCode with JSON event format produces rich, structured events
-agent-live run -- opencode run --format json --model opencode/deepseek-v4-flash "your prompt"
-```
-
-**Generic — regex fallback (any agent):**
-
-```bash
-# Works with any CLI agent (Claude Code, Codex, etc.)
-agent-live run -- claude "write a README"
-```
-
-Agent-live inspects each line of output and attempts to parse it as JSON first (for `opencode run --format json`), then falls back to regex pattern matching on plain text. This means all agents work out of the box, with richer events from OpenCode's JSON mode.
-
-### Options
-
-### OpenCode Server Mode
-
-For the richest event experience, run OpenCode in server mode first:
-
-```bash
-# Terminal 1: Start the OpenCode server
-opencode serve --port 4096
-
-# Terminal 2: Run agent-live attached to the server
-agent-live run -- opencode run --attach http://localhost:4096 \
-  --format json --model opencode/deepseek-v4-flash "your prompt"
-```
-
-The JSON format gives agent-live structured file read/write events, command executions, and plan steps — making the graph much more detailed.
-
----
+| Event | Meaning |
+| --- | --- |
+| `file_read` | Agent read or searched a file |
+| `file_write` | Agent wrote, edited, or created a file |
+| `command` | Agent ran a shell command |
+| `thought` | Agent emitted useful text output |
+| `plan_step` | Agent declared a planning step |
+| `error` | Parser or runtime error |
+| `done` | Wrapped process finished |
 
 ## Project Structure
 
-```
+```text
 agent-live/
-├── main.go              # Entry point, PTY wrapper, HTTP server
-├── parser.go            # JSON + regex agent output parser
-├── events.go            # Event type definitions
-├── hub.go               # WebSocket broadcast hub
-├── dashboard/           # React frontend
+├── main.go              # CLI, PTY runner, HTTP server
+├── parser.go            # OpenCode JSON parser + generic text fallback
+├── events.go            # Event schema
+├── hub.go               # WebSocket broadcast hub with history replay
+├── dashboard/           # React + Vite dashboard
 │   └── src/
-│       ├── App.tsx      # Main app, WebSocket (with reconnect), event→graph wiring
-│       ├── Graph/       # D3-force knowledge graph
-│       ├── Timeline/    # Event feed
-│       └── StatusBar/   # Connection light, counters, timer
-├── Makefile             # build/check/dev/clean targets
-└── agent-live           # Compiled binary (after make build, gitignored)
+│       ├── App.tsx
+│       ├── Graph/
+│       ├── Timeline/
+│       └── StatusBar/
+├── Makefile
+└── .github/workflows/ci.yml
 ```
-
----
 
 ## Development
 
 ```bash
-# Full build (npm install → vite build → go build)
-make build
-
-# Run Go checks
-make check
-
-# TypeScript checks
-make tscheck
-
-# CI pipeline (lint + typecheck + build)
-make ci
-
-# Dev mode (separate terminals)
-make deps
-cd dashboard && npx vite        # Terminal 1: Vite dev server :5173
-./agent-live run -- opencode ...  # Terminal 2: agent-live
+make deps       # install dashboard dependencies
+make tscheck    # TypeScript check
+make dashboard  # build embedded dashboard assets
+make check      # go vet
+make build      # full local build
+make ci         # local CI sequence
 ```
 
----
+For dashboard iteration:
+
+```bash
+make deps
+cd dashboard && npx vite
+```
+
+In another terminal:
+
+```bash
+./agent-live run -- opencode "your prompt"
+```
 
 ## License
 
