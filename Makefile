@@ -1,4 +1,4 @@
-GO := /opt/homebrew/bin/go
+GO ?= go
 
 .PHONY: all build check dev clean deps dashboard ci tscheck
 
@@ -13,7 +13,7 @@ deps:
 dashboard:
 	cd dashboard && npx vite build
 
-# Build the Go binary (assumes dashboard/dist is up-to-date)
+# Build the Go binary with the embedded dashboard
 build: deps tscheck dashboard
 	$(GO) build -o agent-live .
 
@@ -44,7 +44,7 @@ dev:
 # Clean build artifacts
 clean:
 	rm -rf dashboard/dist
-	rm -f agent-live agent-live.exe agent-live-darwin agent-live-linux
+	rm -f agent-live agent-live.exe agent-live-darwin-* agent-live-linux-*
 	$(GO) clean
 
 # Full CI check (runs all stages in order)
